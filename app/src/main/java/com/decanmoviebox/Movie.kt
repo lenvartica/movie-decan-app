@@ -9,16 +9,30 @@ data class VideoSource(
 data class Movie(
     val id: String,
     val title: String,
-    val year: String,
-    val overview: String,
-    val posterUrl: String?,
-    val releaseDate: String,
-    val archiveUrl: String,
-    val licenseUrl: String,
-    val videoUrl: String,
-    val tmdbId: Int,
+    val year: String = "",
+    val overview: String = "",
+    val posterUrl: String? = null,
+    val releaseDate: String = "",
+    val archiveUrl: String = "",
+    val licenseUrl: String = "",
+    val videoUrl: String = "",
+    val tmdbId: Int = 0,
     val mediaType: String = "movie",
-    val videoOptions: List<VideoSource> = emptyList(),
-    val sourceName: String = "Internet Archive",
+    val sourceName: String = "Decan Engine",
     val streamFormat: String = "progressive",
+    val videoOptions: List<VideoSource> = emptyList(),
+)
+
+
+data class SeriesSeason(
+    val seasonNumber: Int,
+    val name: String,
+    val episodeCount: Int,
+)
+
+data class SeriesEpisode(
+    val episodeNumber: Int,
+    val name: String,
+    val airDate: String = "",
+    val overview: String = "",
 )

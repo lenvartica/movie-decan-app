@@ -4,6 +4,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import android.os.Environment
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,25 +22,33 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -103,39 +112,63 @@ private fun DecanMovieBoxApp() {
     }
     val scope = rememberCoroutineScope()
     var destination by remember { mutableStateOf(Destination.BROWSE) }
-    var movies by remember { mutableStateOf<List<Movie>>(emptyList()) }
+    
+    var categories by remember { mutableStateOf<Map<String, List<Movie>>>(emptyMap()) }
+    var searchResults by remember { mutableStateOf<List<Movie>>(emptyList()) }
     var query by remember { mutableStateOf("") }
-    var page by remember { mutableIntStateOf(1) }
     var loading by remember { mutableStateOf(false) }
+    var fetchingStreams by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    
     var selectedMovie by remember { mutableStateOf<Movie?>(null) }
     var pendingDownload by remember { mutableStateOf<Movie?>(null) }
     var selectedDownloadSource by remember { mutableStateOf<VideoSource?>(null) }
     var downloadError by remember { mutableStateOf<String?>(null) }
     var playerMovie by remember { mutableStateOf<Movie?>(null) }
+    
     var refreshFavorites by remember { mutableIntStateOf(0) }
     var refreshDownloads by remember { mutableIntStateOf(0) }
     var wifiOnly by remember { mutableStateOf(library.wifiOnlyDownloads()) }
 
-    fun loadMovies(reset: Boolean) {
-        if (loading) return
-        val requestedPage = if (reset) 1 else page + 1
+    fun loadHomeCategories() {
         loading = true
-        error = null
         scope.launch {
             try {
-                val results = withContext(Dispatchers.IO) { repository.search(query, requestedPage) }
-                movies = if (reset) results else movies + results
-                page = requestedPage
-            } catch (exception: Exception) {
-                error = exception.message ?: "Could not load the catalog."
+                categories = withContext(Dispatchers.IO) { repository.getCategories() }
+                error = if (categories.isEmpty()) "Catalogs are temporarily unavailable. Check your connection and TMDB credentials, then retry." else null
+            } catch (e: Exception) {
+                error = e.message ?: "Failed to load movie categories."
             } finally {
                 loading = false
             }
         }
     }
 
-    LaunchedEffect(Unit) { loadMovies(reset = true) }
+    fun performSearch() {
+        if (query.isBlank()) {
+            searchResults = emptyList()
+            return
+        }
+        loading = true
+        scope.launch {
+            try {
+                searchResults = withContext(Dispatchers.IO) { repository.search(query) }
+                error = if (searchResults.isEmpty()) "No matches found. If TMDB is unavailable, try a simpler title or browse the Catalogs tab." else null
+            } catch (e: Exception) {
+                error = e.message ?: "Search failed. Please try again."
+            } finally {
+                loading = false
+            }
+        }
+    }
+
+    fun loadMovieStreams(movie: Movie) {
+        // Metadata results are not presumed to have a legal stream. Only verified archive records carry videoUrl.
+        selectedMovie = movie
+        fetchingStreams = false
+    }
+
+    LaunchedEffect(Unit) { loadHomeCategories() }
 
     playerMovie?.let { movie ->
         PlayerScreen(movie = movie, library = library, onBack = { playerMovie = null })
@@ -153,6 +186,12 @@ private fun DecanMovieBoxApp() {
                     label = { Text("Browse") },
                 )
                 NavigationBarItem(
+                    selected = destination == Destination.CATALOGS,
+                    onClick = { destination = Destination.CATALOGS },
+                    icon = { Icon(Icons.Default.VideoLibrary, contentDescription = "Catalogs") },
+                    label = { Text("Catalogs") },
+                )
+                NavigationBarItem(
                     selected = destination == Destination.SAVED,
                     onClick = {
                         destination = Destination.SAVED
@@ -160,12 +199,6 @@ private fun DecanMovieBoxApp() {
                     },
                     icon = { Icon(Icons.Default.Favorite, contentDescription = "Saved") },
                     label = { Text("Saved") },
-                )
-                NavigationBarItem(
-                    selected = destination == Destination.CATALOGS,
-                    onClick = { destination = Destination.CATALOGS },
-                    icon = { Icon(Icons.Default.Search, contentDescription = "Catalogs and metadata") },
-                    label = { Text("Catalogs") },
                 )
                 NavigationBarItem(
                     selected = destination == Destination.DOWNLOADS,
@@ -181,32 +214,32 @@ private fun DecanMovieBoxApp() {
     ) { padding ->
         when (destination) {
             Destination.BROWSE -> BrowseScreen(
-                movies = movies,
+                categories = categories,
+                searchResults = searchResults,
                 query = query,
-                onQueryChange = { query = it },
-                onSearch = { loadMovies(reset = true) },
-                onBrowseCatalogs = { destination = Destination.CATALOGS },
-                onMovieClick = { selectedMovie = it },
+                onQueryChange = { 
+                    query = it 
+                    if (it.isBlank()) searchResults = emptyList()
+                },
+                onSearch = { performSearch() },
+                onRetry = { if (query.isNotBlank()) performSearch() else loadHomeCategories() },
+                onMovieClick = { loadMovieStreams(it) },
                 onResume = { library.lastMovie()?.let { playerMovie = it } },
-                onLoadMore = { loadMovies(reset = false) },
                 loading = loading,
                 error = error,
                 padding = padding,
             )
+            Destination.CATALOGS -> AddonCatalogScreen(padding = padding)
             Destination.SAVED -> {
                 val favoriteMovies = remember(refreshFavorites) { library.favorites() }
                 MovieCollectionScreen(
-                    heading = "Your saved movies",
+                    heading = "Your Saved Movies",
                     movies = favoriteMovies,
-                    emptyMessage = "Save a movie from its details to find it here.",
-                    onMovieClick = { selectedMovie = it },
+                    emptyMessage = "Save a movie from details to find it here.",
+                    onMovieClick = { loadMovieStreams(it) },
                     padding = padding,
                 )
             }
-            Destination.CATALOGS -> AddonCatalogScreen(
-                padding = padding,
-                onAuthorizedSource = { selectedMovie = it },
-            )
             Destination.DOWNLOADS -> {
                 val entries = remember(refreshDownloads) { library.downloads() }
                 DownloadsScreen(
@@ -219,7 +252,11 @@ private fun DecanMovieBoxApp() {
                     onPlay = { entry ->
                         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                         val downloadedUri = manager.getUriForDownloadedFile(entry.downloadId)
-                        if (downloadedUri != null) playerMovie = entry.movie.copy(videoUrl = downloadedUri.toString())
+                        if (downloadedUri != null) {
+                            playerMovie = entry.movie.copy(videoUrl = downloadedUri.toString())
+                        } else {
+                            Toast.makeText(context, "This download is not finished yet.", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     padding = padding,
                 )
@@ -230,7 +267,9 @@ private fun DecanMovieBoxApp() {
     selectedMovie?.let { movie ->
         MovieDetailsDialog(
             movie = movie,
+            repository = repository,
             isFavorite = library.isFavorite(movie),
+            isFetchingStreams = fetchingStreams,
             onDismiss = { selectedMovie = null },
             onPlay = {
                 playerMovie = movie
@@ -250,24 +289,26 @@ private fun DecanMovieBoxApp() {
     pendingDownload?.let { movie ->
         AlertDialog(
             onDismissRequest = { pendingDownload = null },
-            title = { Text("Download video?") },
+            title = { Text("Download Movie") },
             text = {
-                Text(
-                    "Download the selected direct video file for offline viewing? " +
-                        if (wifiOnly) "Wi-Fi-only downloads are enabled." else "Mobile data may be used.",
-                )
-                Spacer(Modifier.height(8.dp))
-                if (movie.streamFormat == "hls") {
-                    Text("HLS playlists cannot be saved as a single video file. Stream it online instead.")
-                } else {
-                    Text("Download quality", style = MaterialTheme.typography.labelLarge)
-                    movie.videoOptions.forEach { source ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = selectedDownloadSource == source,
-                                onClick = { selectedDownloadSource = source },
-                            )
-                            Text(source.label, style = MaterialTheme.typography.bodyMedium)
+                Column {
+                    Text(
+                        if (wifiOnly) "Wi-Fi-only downloads enabled." else "Mobile data may be used.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("Select Stream Quality", style = MaterialTheme.typography.labelLarge)
+                    if (movie.videoOptions.isEmpty()) {
+                        Text("Default progressive source", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        movie.videoOptions.forEach { source ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(
+                                    selected = selectedDownloadSource == source,
+                                    onClick = { selectedDownloadSource = source },
+                                )
+                                Text(source.label, style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
                 }
@@ -275,20 +316,22 @@ private fun DecanMovieBoxApp() {
             confirmButton = {
                 Button(onClick = {
                     try {
+                        val chosenSource = selectedDownloadSource ?: movie.videoOptions.firstOrNull()
+                        val targetUrl = chosenSource?.url ?: movie.videoUrl
+                        require(isAllowedMediaUrl(targetUrl)) { "This title has no verified downloadable video source. Choose a licensed Internet Archive title instead." }
                         enqueueDownload(
                             context,
                             library,
                             movie,
-                            selectedDownloadSource ?: movie.videoOptions.firstOrNull()
-                                ?: VideoSource(movie.videoUrl, "Available MP4"),
+                            chosenSource ?: VideoSource(targetUrl, "Standard MP4"),
                         )
                         downloadError = null
                     } catch (exception: Exception) {
-                        downloadError = exception.message ?: "The download could not be started."
+                        downloadError = exception.message ?: "Download failed to start."
                     }
                     pendingDownload = null
                     refreshDownloads++
-                }, enabled = movie.streamFormat != "hls") { Text("Download") }
+                }) { Text("Start Download") }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDownload = null }) { Text("Cancel") }
@@ -299,7 +342,7 @@ private fun DecanMovieBoxApp() {
     downloadError?.let { message ->
         AlertDialog(
             onDismissRequest = { downloadError = null },
-            title = { Text("Download could not start") },
+            title = { Text("Download Failed") },
             text = { Text(message) },
             confirmButton = {
                 TextButton(onClick = { downloadError = null }) { Text("OK") }
@@ -310,85 +353,126 @@ private fun DecanMovieBoxApp() {
 
 @Composable
 private fun BrowseScreen(
-    movies: List<Movie>,
+    categories: Map<String, List<Movie>>,
+    searchResults: List<Movie>,
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
-    onBrowseCatalogs: () -> Unit,
+    onRetry: () -> Unit,
     onMovieClick: (Movie) -> Unit,
     onResume: () -> Unit,
-    onLoadMore: () -> Unit,
     loading: Boolean,
     error: String?,
     padding: PaddingValues,
 ) {
     val context = LocalContext.current
-    Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFF2B84B)),
-                contentAlignment = Alignment.Center,
+    LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+        item {
+            // App Header Branding
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("DM", color = Color(0xFF171411), fontWeight = FontWeight.Black)
-            }
-            Column(Modifier.padding(start = 12.dp)) {
-                Text("DECAN", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("MOVIE BOX", style = MaterialTheme.typography.labelSmall, color = Color(0xFFF2B84B))
-            }
-        }
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            singleLine = true,
-            label = { Text("Search licensed movies and shows") },
-            trailingIcon = {
-                androidx.compose.material3.IconButton(onClick = onSearch) {
-                    Icon(Icons.Default.Search, contentDescription = "Search")
+                Box(
+                    Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFF2B84B)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("DM", color = Color(0xFF171411), fontWeight = FontWeight.Black)
                 }
-            },
-        )
-        val lastMovie = remember(context) { LocalLibrary(context).lastMovie() }
-        if (lastMovie != null) {
-            TextButton(onClick = onResume, modifier = Modifier.padding(start = 12.dp, top = 4.dp)) {
-                Text("▶  Continue watching ${lastMovie.title}", color = Color(0xFFF2B84B))
-            }
-        }
-        Text(
-            if (query.isBlank()) "Public-domain & licensed picks" else "Search results",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 8.dp),
-        )
-        when {
-            loading && movies.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            error != null && movies.isEmpty() -> Column {
-                ErrorPanel(error)
-                OutlinedButton(onClick = onBrowseCatalogs, modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Text("Browse metadata catalogs")
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text("DECAN", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("MOVIE BOX", style = MaterialTheme.typography.labelSmall, color = Color(0xFFF2B84B))
                 }
             }
-            movies.isEmpty() -> Text("No titles matched both the rights check and TMDB.", Modifier.padding(16.dp))
-            else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(movies, key = { it.id }) { movie -> MovieCard(movie, onClick = { onMovieClick(movie) }) }
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
-                        OutlinedButton(onClick = onLoadMore, enabled = !loading) {
-                            Text(if (loading) "Loading…" else "Load more")
+
+            // Search Field
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                singleLine = true,
+                label = { Text("Search Movies, Series & Anime") },
+                trailingIcon = {
+                    IconButton(onClick = onSearch) {
+                        Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
+                },
+            )
+
+            val lastMovie = remember(context) { LocalLibrary(context).lastMovie() }
+            if (lastMovie != null && query.isBlank()) {
+                TextButton(onClick = onResume, modifier = Modifier.padding(start = 12.dp, top = 4.dp)) {
+                    Text("▶ Continue watching ${lastMovie.title}", color = Color(0xFFF2B84B))
+                }
+            }
+        }
+
+        if (error != null) {
+            item {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp)) {
+                    Text(error.orEmpty(), color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = onRetry) { Text("Retry") }
+                }
+            }
+        }
+
+        // Search Results Section
+        if (query.isNotBlank()) {
+            item {
+                Text(
+                    "Search Results",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 8.dp)
+                )
+            }
+            if (loading && searchResults.isEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else {
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(searchResults) { movie ->
+                            MovieCard(movie, onClick = { onMovieClick(movie) })
                         }
-                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+        } else {
+            // Multi-Directional Category Layout (Vertical column of horizontal rows)
+            if (loading && categories.isEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().height(250.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else {
+                categories.forEach { (categoryName, movieList) ->
+                    if (movieList.isNotEmpty()) {
+                        item {
+                            Text(
+                                categoryName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 16.dp, top = 18.dp, bottom = 8.dp)
+                            )
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(movieList) { movie ->
+                                    MovieCard(movie, onClick = { onMovieClick(movie) })
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -445,43 +529,42 @@ private fun DownloadsScreen(
             Switch(checked = wifiOnly, onCheckedChange = onWifiOnlyChange)
         }
         if (entries.isEmpty()) {
-            Text("Movies you download will appear here.", Modifier.padding(20.dp), color = Color.LightGray)
+            Text(
+                "Movies you download will appear here.",
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                color = Color.LightGray,
+            )
         } else {
-            entries.forEach { entry ->
-                DownloadRow(entry, onPlay)
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(entries, key = { it.downloadId }) { entry ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1916)),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            AsyncImage(
+                                model = entry.movie.posterUrl,
+                                contentDescription = "Poster for ${entry.movie.title}",
+                                modifier = Modifier.width(64.dp).aspectRatio(0.68f).clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(entry.movie.title, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                                Text("Download ID ${entry.downloadId}", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                                TextButton(onClick = { onPlay(entry) }) { Text("Play downloaded file") }
+                            }
+                        }
+                    }
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun DownloadRow(entry: DownloadEntry, onPlay: (DownloadEntry) -> Unit) {
-    val context = LocalContext.current
-    val manager = remember { context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager }
-    var status by remember(entry.downloadId) { mutableStateOf(downloadStatus(manager, entry.downloadId)) }
-    LaunchedEffect(entry.downloadId) {
-        while (true) {
-            status = downloadStatus(manager, entry.downloadId)
-            kotlinx.coroutines.delay(2_000)
-        }
-    }
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(14.dp)).background(Color(0xFF201E1A)).padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AsyncImage(
-            model = entry.movie.posterUrl,
-            contentDescription = null,
-            modifier = Modifier.size(width = 56.dp, height = 80.dp).clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop,
-        )
-        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(entry.movie.title, fontWeight = FontWeight.SemiBold)
-            Text(status, style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
-        }
-        if (status == "Ready to play") {
-            TextButton(onClick = { onPlay(entry) }) { Text("Play") }
         }
     }
 }
@@ -489,19 +572,30 @@ private fun DownloadRow(entry: DownloadEntry, onPlay: (DownloadEntry) -> Unit) {
 @Composable
 private fun MovieCard(movie: Movie, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1916)),
+        modifier = Modifier.width(142.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1916)),
     ) {
-        AsyncImage(
-            model = movie.posterUrl,
-            contentDescription = "Poster for ${movie.title}",
-            modifier = Modifier.fillMaxWidth().aspectRatio(0.68f).background(Color(0xFF29251E)),
-            contentScale = ContentScale.Crop,
-        )
-        Column(Modifier.padding(10.dp)) {
-            Text(movie.title, maxLines = 1, fontWeight = FontWeight.SemiBold)
-            Text(movie.year, color = Color(0xFFF2B84B), style = MaterialTheme.typography.labelMedium)
+        Box {
+            AsyncImage(
+                model = movie.posterUrl,
+                contentDescription = "Poster for ${movie.title}",
+                modifier = Modifier.fillMaxWidth().aspectRatio(0.68f).background(Color(0xFF29251E)),
+                contentScale = ContentScale.Crop,
+            )
+            if (movie.videoUrl.isNotBlank()) {
+                Box(Modifier.align(Alignment.BottomEnd).padding(7.dp).size(30.dp).clip(RoundedCornerShape(50)).background(Color(0xFFF2B84B)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Available to play", tint = Color(0xFF171411))
+                }
+            }
+        }
+        Column(Modifier.padding(9.dp)) {
+            Text(movie.title, maxLines = 2, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                listOf(movie.year, when (movie.mediaType) { "tv" -> "Series"; "anime" -> "Anime"; else -> "Movie" }).filter(String::isNotBlank).joinToString(" · "),
+                color = Color(0xFFF2B84B), style = MaterialTheme.typography.labelSmall,
+            )
+            if (movie.videoUrl.isBlank()) Text("Info only", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -509,98 +603,119 @@ private fun MovieCard(movie: Movie, onClick: () -> Unit) {
 @Composable
 private fun MovieDetailsDialog(
     movie: Movie,
+    repository: CatalogRepository,
     isFavorite: Boolean,
+    isFetchingStreams: Boolean,
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
     onFavorite: () -> Unit,
     onDownload: () -> Unit,
 ) {
+    var seasons by remember(movie.tmdbId) { mutableStateOf<List<SeriesSeason>>(emptyList()) }
+    var selectedSeason by remember(movie.tmdbId) { mutableStateOf<Int?>(null) }
+    var episodes by remember(movie.tmdbId) { mutableStateOf<List<SeriesEpisode>>(emptyList()) }
+    var seasonMenu by remember { mutableStateOf(false) }
+    var seriesInfoError by remember(movie.tmdbId) { mutableStateOf<String?>(null) }
+    var seriesInfoLoading by remember(movie.tmdbId) { mutableStateOf(false) }
+
+    LaunchedEffect(movie.tmdbId, movie.mediaType) {
+        if (movie.mediaType == "tv" && movie.tmdbId > 0) {
+            seriesInfoLoading = true
+            seriesInfoError = null
+            try {
+                seasons = withContext(Dispatchers.IO) { repository.getSeriesSeasons(movie.tmdbId) }
+                selectedSeason = seasons.firstOrNull()?.seasonNumber
+                if (seasons.isEmpty()) seriesInfoError = "No season data returned. Check your TMDB connection or credentials."
+            } catch (exception: Exception) {
+                seriesInfoError = "Season details are temporarily unavailable."
+            } finally {
+                seriesInfoLoading = false
+            }
+        } else if (movie.mediaType == "tv") {
+            seriesInfoError = "Season details require a TMDB result with a valid ID."
+        }
+    }
+    LaunchedEffect(movie.tmdbId, selectedSeason) {
+        val seasonNumber = selectedSeason ?: return@LaunchedEffect
+        episodes = emptyList()
+        try {
+            episodes = withContext(Dispatchers.IO) { repository.getSeasonEpisodes(movie.tmdbId, seasonNumber) }
+        } catch (_: Exception) {
+            episodes = emptyList()
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("${movie.title} ${movie.year}".trim()) },
+        title = { Text(movie.title) },
         text = {
-            Column {
-                movie.posterUrl?.let {
-                    AsyncImage(
-                        model = it,
-                        contentDescription = "Poster for ${movie.title}",
-                        modifier = Modifier.fillMaxWidth().height(210.dp).clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop,
-                    )
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                movie.posterUrl?.let { poster ->
+                    AsyncImage(model = poster, contentDescription = "Poster for ${movie.title}", modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
                 }
-                Text(movie.overview.ifBlank { "No description is available." }, Modifier.padding(top = 12.dp))
-                Text("${if (movie.mediaType == "tv") "First aired" else "Release date"}: " +
-                    movie.releaseDate.ifBlank { "Not listed" },
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-                Text("Source: ${movie.sourceName}", style = MaterialTheme.typography.bodySmall)
-                Text("Rights: ${movie.licenseUrl}", style = MaterialTheme.typography.bodySmall)
-                if (movie.tmdbId > 0) {
-                    Text("TMDB metadata • TMDB ID ${movie.tmdbId}", style = MaterialTheme.typography.labelSmall,
-                        color = Color.LightGray, modifier = Modifier.padding(top = 6.dp))
+                Text(listOf(movie.year, if (movie.mediaType == "tv") "TV Series" else if (movie.mediaType == "anime") "Anime" else "Movie", movie.sourceName).filter(String::isNotBlank).joinToString(" · "), color = Color(0xFFF2B84B), modifier = Modifier.padding(top = 10.dp))
+                if (movie.overview.isNotBlank()) Text(movie.overview, modifier = Modifier.padding(top = 8.dp))
+                if (movie.licenseUrl.isNotBlank()) Text("Rights / license: ${movie.licenseUrl}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                if (movie.mediaType == "tv") {
+                    Text("Seasons & episodes", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
+                    if (seasons.isEmpty()) {
+                        Text(if (seriesInfoLoading) "Loading season information…" else (seriesInfoError ?: "Season information unavailable."), style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                    } else {
+                        Box {
+                            TextButton(onClick = { seasonMenu = true }) {
+                                val current = seasons.firstOrNull { it.seasonNumber == selectedSeason }
+                                Text("${current?.name ?: "Choose season"} ▾")
+                            }
+                            androidx.compose.material3.DropdownMenu(expanded = seasonMenu, onDismissRequest = { seasonMenu = false }) {
+                                seasons.forEach { season ->
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text("${season.name} · ${season.episodeCount} episodes") },
+                                        onClick = { selectedSeason = season.seasonNumber; seasonMenu = false },
+                                    )
+                                }
+                            }
+                        }
+                        if (episodes.isEmpty()) Text("No episode details were returned for this season.", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                        else episodes.forEach { episode ->
+                            Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                                Text("${episode.episodeNumber}. ${episode.name}", fontWeight = FontWeight.Medium)
+                                if (episode.airDate.isNotBlank()) Text(episode.airDate, color = Color(0xFFF2B84B), style = MaterialTheme.typography.labelSmall)
+                                if (episode.overview.isNotBlank()) Text(episode.overview, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 3)
+                            }
+                        }
+                    }
+                }
+                if (movie.videoUrl.isBlank()) {
+                    Text("This result provides metadata only. No verified playback or download source is available in this app for this title.", color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
+                } else {
+                    Text("Open-license metadata and MP4 found · ${movie.videoOptions.size.coerceAtLeast(1)} file option(s)", color = Color(0xFF9FE3B1), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
                 }
             }
         },
         confirmButton = {
-            Row {
-                TextButton(onClick = onFavorite) { Text(if (isFavorite) "Remove saved" else "Save") }
-                TextButton(onClick = onDownload, enabled = movie.streamFormat != "hls") { Text("Download") }
-                Button(onClick = onPlay) { Text("Play") }
+            Column(horizontalAlignment = Alignment.End) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = onFavorite) { Text(if (isFavorite) "Remove Saved" else "♡ Save") }
+                    TextButton(onClick = onDownload, enabled = movie.videoUrl.isNotBlank() && isAllowedMediaUrl(movie.videoUrl)) { Text("Download") }
+                }
+                Button(onClick = onPlay, enabled = movie.videoUrl.isNotBlank() && !isFetchingStreams, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (isFetchingStreams) "Checking…" else "▶ Play")
+                }
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }
 
-@Composable
-private fun ErrorPanel(message: String) {
-    Surface(
-        color = Color(0xFF241B18),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-    ) {
-        Text(message, color = Color(0xFFFFB4A9), modifier = Modifier.padding(16.dp))
-    }
+private fun enqueueDownload(context: Context, library: LocalLibrary, movie: Movie, source: VideoSource): Long {
+    require(isAllowedMediaUrl(source.url)) { "Downloads are limited to verified HTTPS Internet Archive media files." }
+    val updatedMovie = movie.copy(videoUrl = source.url)
+    val id = library.startDownload(updatedMovie, source.url)
+    check(id > 0L) { "Android could not start this download." }
+    return id
 }
 
-private fun enqueueDownload(
-    context: Context,
-    library: LocalLibrary,
-    movie: Movie,
-    source: VideoSource,
-) {
-    val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-    val request = DownloadManager.Request(Uri.parse(source.url))
-        .setTitle(movie.title)
-        .setDescription("Decan Movie Box • ${movie.sourceName}")
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setAllowedOverMetered(!library.wifiOnlyDownloads())
-        .setAllowedOverRoaming(false)
-        .setDestinationInExternalFilesDir(
-            context,
-            Environment.DIRECTORY_MOVIES,
-            "${movie.id.replace(Regex("[^A-Za-z0-9._-]"), "_")}_${source.height ?: source.url.hashCode()}.${downloadExtension(source.url)}",
-        )
-    library.addDownload(movie.copy(videoUrl = source.url), manager.enqueue(request))
-}
-
-private fun downloadExtension(address: String): String {
-    val extension = Uri.parse(address).lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()
-    return extension.takeIf { it in setOf("mp4", "m4v", "webm", "mov") } ?: "mp4"
-}
-
-private fun downloadStatus(manager: DownloadManager, id: Long): String {
-    val cursor = manager.query(DownloadManager.Query().setFilterById(id))
-    cursor.use {
-        if (it == null || !it.moveToFirst()) return "Not found"
-        return when (it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
-            DownloadManager.STATUS_SUCCESSFUL -> "Ready to play"
-            DownloadManager.STATUS_FAILED -> "Download failed"
-            DownloadManager.STATUS_PAUSED -> "Paused"
-            DownloadManager.STATUS_PENDING -> "Waiting"
-            DownloadManager.STATUS_RUNNING -> "Downloading"
-            else -> "Queued"
-        }
-    }
-}
+private fun isAllowedMediaUrl(value: String): Boolean = runCatching {
+    val uri = Uri.parse(value)
+    uri.scheme == "https" && (uri.host == "archive.org" || uri.host?.endsWith(".archive.org") == true) && uri.path?.contains("/download/") == true
+}.getOrDefault(false)

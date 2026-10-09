@@ -1,6 +1,6 @@
 # Decan Movie Box
 
-Decan Movie Box is a native Android starter app for browsing licensed Internet Archive films, matching them to TMDB movie or TV metadata, and viewing metadata-only catalogs from selected add-ons. Authorized Internet Archive titles can be streamed and saved for offline playback.
+Decan Movie Box is a native Android movie discovery app with TMDB metadata, Kitsu anime metadata, metadata-only add-on catalogs, and a rights-filtered Internet Archive fallback. Playback and downloads are enabled only for direct Internet Archive MP4 files that pass the app’s license metadata checks.
 
 ## Contents
 
@@ -116,7 +116,7 @@ GitHub does not discover workflows stored in `github/workflows` without the lead
 6. Paste your TMDB **API Read Access Token (v4 auth)** into the secret value field.
 7. Select **Add secret**.
 
-The secret name is case-sensitive for this workflow. Do not add quotation marks or spaces around the token. Do not put credentials directly in `android.yml`, the README, Kotlin files, or any other tracked project file. Before building, the workflow checks that `TMDB_ACCESS_TOKEN` or the legacy `TMDB_API_KEY` secret is present and fails with a setup message if neither is set.
+The secret name is case-sensitive for this workflow. Do not add quotation marks or spaces around the token. Do not put credentials directly in `android.yml`, the README, Kotlin files, or any other tracked project file. The workflow can build without a TMDB credential; TMDB-powered rows will be unavailable until you add one, while fallback catalog paths remain available.
 
 The workflow passes the secret to Gradle as an environment variable only during the APK build:
 
@@ -145,9 +145,8 @@ The **Catalogs** tab connects to a small, fixed list of Stremio-compatible sourc
 - **Cinemeta** — movie and series catalogs/metadata.
 - **Streaming Catalogs** — catalog listings for supported streaming services.
 - **The Movie Database Addon** — TMDB catalog and metadata listings.
-- **TOP Streaming** — catalog listings; its configured manifest URL contains the supplied `temporary_username` path.
 
-Choose a source and catalog, then search if that catalog supports search. These results are for discovery and metadata only. They do not add a play or download action, and the app does not request or use video stream resources from these add-ons. The Internet Archive section remains a separate catalog and only shows entries that pass its license, MP4, and metadata-match checks.
+Choose a source and catalog, then search if that catalog supports search. These results are for discovery and metadata only. They do not add a play or download action, and the app does not request or use video stream resources from these add-ons. Internet Archive fallback results are checked for a recognized open-license/public-domain marker and a compatible MP4 file; they are not automatically matched against TMDB.
 
 Torrent/debrid stream add-ons from the supplied list are intentionally not integrated. The app also checks each fetched manifest and rejects it if it declares a stream resource, even if the source is in the metadata catalog list. Add-on catalogs and descriptions are supplied by their operators and may change, become unavailable, or contain inaccurate information.
 
@@ -155,16 +154,16 @@ The metadata add-on list is maintained in `AddonCatalogRepository.kt`. To add an
 
 ## Check that the key works
 
-- The app needs a newly built APK containing either `TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`. If both are missing, Browse shows an error naming the missing TMDB credentials.
-- After installing the APK, open **Browse**. A valid key should allow the catalog search to request TMDB metadata. Internet Archive records still need to meet the app's rights, video, and title-match filters before they appear.
+- TMDB-powered home rows and season details need a newly built APK containing either `TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`. If both are missing, TMDB requests fail, but search still attempts catalog-only add-ons and the licensed Internet Archive fallback.
+- After installing the APK, open **Browse**. A valid key should allow the catalog search to request TMDB metadata. If TMDB returns no results, the app tries metadata-only add-ons and then Internet Archive items that pass the open-license and MP4 checks.
 - If the key was just added locally, start a new Gradle build. If it was just added to GitHub, start a new workflow run; already-built APKs do not receive the new key.
 - An invalid or disabled credential generally causes the TMDB request to fail. Check that you copied the full API Read Access Token (v4 auth), not the API Key (v3 auth), account password, or a truncated value.
 
 ## Troubleshooting
 
-### The app says TMDB credentials are missing
+### TMDB-powered rows are missing
 
-Check that `TMDB_ACCESS_TOKEN` (recommended) or `TMDB_API_KEY` is spelled exactly and has a non-empty value. The credential must be present when the APK is built; adding it afterward does not update an APK already downloaded or installed. For GitHub, check **Settings** → **Secrets and variables** → **Actions** and start a new workflow run.
+Check that `TMDB_ACCESS_TOKEN` (recommended) or `TMDB_API_KEY` is spelled exactly and has a non-empty value. The credential must be present when the APK is built; adding it afterward does not update an APK already downloaded or installed. The APK can still build without a key, but TMDB-powered rows and season details may be unavailable; metadata add-ons and the licensed Archive fallback are separate fallback paths.
 
 ### The build succeeds but TMDB returns an authorization error
 
@@ -176,7 +175,7 @@ Confirm the workflow file is committed at `.github/workflows/android.yml` (inclu
 
 ### The APK builds but no catalog titles appear
 
-The app intentionally filters results: an Archive item needs recognized license metadata, a compatible MP4 file, and a sufficiently confident TMDB movie/TV match. A working TMDB key does not guarantee that a particular search will find a qualifying item.
+The app intentionally filters Internet Archive results: an item needs recognized open-license/public-domain metadata and a compatible MP4 file. This automated check is only a preliminary filter, not a legal determination. A working TMDB key does not guarantee that a particular search will find a qualifying Archive item.
 
 ## Important key security information
 
@@ -186,10 +185,10 @@ Treat this setup as suitable for development/testing, not as a secure way to pro
 
 ## Catalog rights and attribution
 
-The app accepts Internet Archive records only when their metadata includes a recognized Creative Commons reuse license or public-domain mark/CC0 license, a compatible MP4 source, and a confident TMDB match. It displays source and license information in the details panel. Catalog metadata is not independent verification that the uploader had the rights to publish a work; review each title's rights before use or redistribution and comply with any license conditions, including attribution and non-commercial restrictions.
+The app accepts Internet Archive records only when metadata contains a recognized Creative Commons reuse license or public-domain/CC0 marker and a compatible MP4 file. It displays the source and license metadata in the details panel. This automated check is a filter, not legal verification: catalog metadata cannot prove the uploader had the rights to publish a work. Review each title before use or redistribution and comply with all license conditions, including attribution and non-commercial restrictions.
 
 TMDB metadata and images are provided by TMDB and are subject to TMDB's current terms and attribution requirements. Review TMDB's requirements before public distribution.
 
 ## Current app scope
 
-The initial app targets Android 8.0+ phones and tablets, uses English TMDB metadata, and keeps favorites and playback position on-device. It has a separate metadata-only add-on catalog tab; those results cannot be played or downloaded from the add-on. Authorized Internet Archive playback uses Media3 with standard controls, supported audio/subtitle track selection, playback speed, fullscreen orientation, and a retry message for playback errors. Downloads use Android's system Download Manager and are saved in the app-specific Movies directory; Android removes those app-specific files when the app is uninstalled. The download confirmation offers compatible MP4 choices, ordered by resolution where available.
+The app targets Android 8.0+ phones and tablets, uses English TMDB metadata when configured, and keeps favorites and playback position on-device. If TMDB fails, search can fall back to Internet Archive records that pass the app’s open-license and MP4 checks. The Catalogs tab is metadata-only; those add-on results cannot be played or downloaded. Authorized Internet Archive playback uses Media3 with standard controls, supported audio/subtitle track selection, playback speed, fullscreen orientation, and retry after playback errors. Downloads use Android Download Manager and are saved under Downloads/DecanMovieBox. Compatible MP4 choices are ordered by detected resolution where available. TMDB/Kitsu/add-on results may show metadata without playback, and this version does not implement TV season/episode playback.

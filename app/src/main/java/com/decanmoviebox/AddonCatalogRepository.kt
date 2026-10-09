@@ -43,7 +43,7 @@ class AddonCatalogRepository {
             val catalog = catalogs.optJSONObject(index) ?: continue
             val type = catalog.optString("type")
             val id = catalog.optString("id")
-            if (type !in setOf("movie", "series", "anime") || id.isBlank()) continue
+            if (type !in setOf("movie", "series") || id.isBlank()) continue
             results += AddonCatalog(
                 addon = addon,
                 type = type,
@@ -122,8 +122,8 @@ class AddonCatalogRepository {
 
     private fun getJson(address: String): JSONObject {
         val connection = URL(address).openConnection() as HttpURLConnection
-        connection.connectTimeout = 12_000
-        connection.readTimeout = 15_000
+        connection.connectTimeout = 4_000
+        connection.readTimeout = 6_000
         connection.setRequestProperty("User-Agent", "DecanMovieBox/1.0 (Android; catalog-only)")
         try {
             val status = connection.responseCode
@@ -148,9 +148,5 @@ val metadataAddons = listOf(
     MetadataAddon(
         "The Movie Database Addon",
         "https://94c8cb9f702d-tmdb-addon.baby-beamup.club/manifest.json",
-    ),
-    MetadataAddon(
-        "TOP Streaming",
-        "https://top-streaming.stream/username=temporary_username/manifest.json",
     ),
 )
