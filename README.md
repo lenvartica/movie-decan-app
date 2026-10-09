@@ -140,18 +140,16 @@ This is an unsigned **debug/testing APK**, not a signed production release or Pl
 
 ## Catalog and metadata add-ons
 
-The **Catalogs** tab connects to a small, fixed list of Stremio-compatible sources for browsing movie, series, and anime catalog entries and reading their metadata:
+The **Catalogs** tab connects to a small, fixed list of Stremio-compatible sources for browsing catalog entries and reading their metadata:
 
 - **Cinemeta** — movie and series catalogs/metadata.
 - **Streaming Catalogs** — catalog listings for supported streaming services.
 - **The Movie Database Addon** — TMDB catalog and metadata listings.
 - **TOP Streaming** — catalog listings; its configured manifest URL contains the supplied `temporary_username` path.
 
-Choose a source and catalog, then search if that catalog supports search. Results can be sorted newest-first or alphabetically. Add-on results remain metadata only: the app never fetches streams from their manifests or offers streams they return. For a catalog title, select **Add authorized URL** and enter a direct HTTPS MP4/M4V/WebM/MOV URL or HTTPS HLS `.m3u8` playlist that you own or have permission to use. Enter the applicable license/permission details and affirm that you have the rights. The title can then be played; direct media files can be downloaded using Android's Download Manager. HLS playlists can be streamed but are not offered as downloads because saving only the playlist would not produce a complete offline copy. The Internet Archive section remains separate and shows only entries that pass its license, MP4, and metadata-match checks.
+Choose a source and catalog, then search if that catalog supports search. These results are for discovery and metadata only. They do not add a play or download action, and the app does not request or use video stream resources from these add-ons. The Internet Archive section remains a separate catalog and only shows entries that pass its license, MP4, and metadata-match checks.
 
-These add-on catalog requests do not require TMDB credentials. If the Browse catalog fails because TMDB is unavailable or its credentials are invalid, use the **Browse metadata catalogs** action to continue discovering titles from the configured catalog add-ons.
-
-Torrent/debrid stream add-ons from the supplied list are intentionally not integrated. The app checks each fetched manifest and rejects it if it declares stream support or a stream resource, even if a provider is added to the metadata list. Add-on catalogs and descriptions are supplied by their operators and may change, become unavailable, or contain inaccurate information. A rights confirmation is a user attestation, not independent verification; verify the media source and license yourself.
+Torrent/debrid stream add-ons from the supplied list are intentionally not integrated. The app also checks each fetched manifest and rejects it if it declares a stream resource, even if the source is in the metadata catalog list. Add-on catalogs and descriptions are supplied by their operators and may change, become unavailable, or contain inaccurate information.
 
 The metadata add-on list is maintained in `AddonCatalogRepository.kt`. To add another catalog-only provider, add its HTTPS manifest URL to `metadataAddons` only after confirming that it is intended for catalog/metadata use and does not provide streams. The manifest is checked at runtime as an additional safeguard; adding an entry does not authorize its content or replace rights review.
 
@@ -194,4 +192,4 @@ TMDB metadata and images are provided by TMDB and are subject to TMDB's current 
 
 ## Current app scope
 
-The initial app targets Android 8.0+ phones and tablets, uses English TMDB metadata, and keeps favorites and playback position on-device. Catalog add-ons are metadata-only; user-supplied authorized HTTPS sources can be attached to catalog entries for playback. Media3 supports progressive files and HLS playback, standard controls, supported audio/subtitle track selection, playback speed, fullscreen orientation, and a retry message for playback errors. Downloads use Android's system Download Manager and are saved in the app-specific Movies directory; Android removes those app-specific files when the app is uninstalled. The download confirmation offers compatible direct media files, ordered by resolution where available. HLS offline segment downloads, torrent/debrid resolution, custom playback addons, pause/resume/cancel controls, and download history management are not implemented.
+The initial app targets Android 8.0+ phones and tablets, uses English TMDB metadata, and keeps favorites and playback position on-device. It has a separate metadata-only add-on catalog tab; those results cannot be played or downloaded from the add-on. Authorized Internet Archive playback uses Media3 with standard controls, supported audio/subtitle track selection, playback speed, fullscreen orientation, and a retry message for playback errors. Downloads use Android's system Download Manager and are saved in the app-specific Movies directory; Android removes those app-specific files when the app is uninstalled. The download confirmation offers compatible MP4 choices, ordered by resolution where available.
