@@ -138,19 +138,18 @@ After changing the secret, start a new workflow run and download its new artifac
 
 This is an unsigned **debug/testing APK**, not a signed production release or Play Store package. GitHub does not expose repository secrets to workflows triggered by pull requests from forks, so the secret-check step will fail for those runs. To build from an external contribution, run the workflow from a trusted branch after reviewing the changes.
 
-## Catalog and metadata add-ons
+## Catalog sources
 
-The **Catalogs** tab connects to a small, fixed list of Stremio-compatible sources for browsing catalog entries and reading their metadata:
+The Catalogs screen is preconfigured. Users do not need to add or paste URLs.
 
-- **Cinemeta** — movie and series catalogs/metadata.
-- **Streaming Catalogs** — catalog listings for supported streaming services.
-- **The Movie Database Addon** — TMDB catalog and metadata listings.
+- **TMDB API** — `https://api.themoviedb.org/3/` for movie and TV metadata, search, seasons and episodes. Configure your own `TMDB_ACCESS_TOKEN` (recommended) or `TMDB_API_KEY` at build time.
+- **Kitsu Anime API** — `https://kitsu.io/api/edge/trending/anime` for anime discovery and `https://kitsu.io/api/edge/anime?filter[text]=...` for anime search. This public metadata API does not require a user-supplied URL.
+- **Internet Archive** — `https://archive.org/advancedsearch.php` for catalog discovery and `https://archive.org/metadata/{identifier}` to inspect item metadata and candidate media files. Playback/download buttons are enabled only for compatible HTTPS Archive MP4 files that pass the app's license-metadata filter.
 
-Choose a source and catalog, then search if that catalog supports search. These results are for discovery and metadata only. They do not add a play or download action, and the app does not request or use video stream resources from these add-ons. Internet Archive fallback results are checked for a recognized open-license/public-domain marker and a compatible MP4 file; they are not automatically matched against TMDB.
+If TMDB is offline or no credential is configured, Kitsu and Internet Archive remain independent fallback sources. A metadata entry is not a video stream; not every title will have a playable source. The app does not use third-party stream-resolver add-ons.
 
-Torrent/debrid stream add-ons from the supplied list are intentionally not integrated. The app also checks each fetched manifest and rejects it if it declares a stream resource, even if the source is in the metadata catalog list. Add-on catalogs and descriptions are supplied by their operators and may change, become unavailable, or contain inaccurate information.
+The main Browse screen has a hamburger menu and bottom navigation for Browse, Catalogs, Saved Movies, and Downloads. Tapping a movie opens a full details page with an in-app back button and Android back navigation. Series details include season and episode metadata when TMDB is available.
 
-The metadata add-on list is maintained in `AddonCatalogRepository.kt`. To add another catalog-only provider, add its HTTPS manifest URL to `metadataAddons` only after confirming that it is intended for catalog/metadata use and does not provide streams. The manifest is checked at runtime as an additional safeguard; adding an entry does not authorize its content or replace rights review.
 
 ## Check that the key works
 

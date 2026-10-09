@@ -30,43 +30,45 @@ class CatalogRepository(
     fun search(query: String, page: Int = 1): List<Movie> {
         if (query.isBlank()) return emptyList()
         val tmdb = searchTmdb(query, page)
-        // If TMDB returns no results (including credential/API outages), try catalog-only add-ons.
-        val addonResults = if (tmdb.isEmpty()) searchMetadataAddons(query, page) else emptyList()
-        val combined = tmdb + addonResults
-        val archive = if (page == 1 || combined.size < 5) searchArchiveOrg(query, page) else emptyList()
-        return (combined + archive).distinctBy { "${it.sourceName}:${it.id}" }
+        // Kitsu is a direct, public anime metadata endpoint and does not require a user-supplied URL.
+        val anime = searchKitsuAnime(query, page)
+        // Internet Archive is a separate fallback and only returns entries that pass rights + MP4 checks.
+        val archive = if (page == 1 || tmdb.size + anime.size < 5) searchArchiveOrg(query, page) else emptyList()
+        return (tmdb + anime + archive).distinctBy { "${it.sourceName}:${it.id}" }
     }
 
-    private fun searchMetadataAddons(query: String, page: Int): List<Movie> {
-        val addonRepository = AddonCatalogRepository()
-        val results = mutableListOf<Movie>()
-        // Keep the fallback bounded; a failing add-on must not prevent the others from being tried.
-        for (addon in metadataAddons.take(4)) {
-            try {
-                val catalogs = addonRepository.loadCatalogs(addon)
-                    .sortedByDescending { it.supportsSearch }
-                    .take(2)
-                for (catalog in catalogs) {
-                    val items = addonRepository.loadItems(catalog, query, page)
-                    for (item in items) {
-                        results += Movie(
-                            id = item.id,
-                            title = item.title,
-                            year = item.year,
-                            overview = item.overview,
-                            posterUrl = item.posterUrl,
-                            sourceName = "${item.sourceName} · metadata",
-                            mediaType = if (item.type == "series") "tv" else item.type,
-                        )
-                    }
-                    if (results.size >= 12) break
-                }
-            } catch (_: Exception) {
-                // Continue to the next configured catalog provider.
+    private fun searchKitsuAnime(query: String, page: Int): List<Movie> = try {
+        val uri = Uri.parse("https://kitsu.io/api/edge/anime").buildUpon()
+            .appendQueryParameter("filter[text]", query.trim())
+            .appendQueryParameter("page[limit]", "20")
+            .appendQueryParameter("page[offset]", ((page.coerceAtLeast(1) - 1) * 20).toString())
+            .build()
+        val data = getJson(uri.toString()).optJSONArray("data") ?: JSONArray()
+        buildList {
+            for (i in 0 until data.length()) {
+                val item = data.optJSONObject(i) ?: continue
+                val attrs = item.optJSONObject("attributes") ?: continue
+                val titles = attrs.optJSONObject("titles")
+                val title = titles?.optString("en")?.takeIf(String::isNotBlank)
+                    ?: titles?.optString("en_jp")?.takeIf(String::isNotBlank)
+                    ?: attrs.optString("canonicalTitle")
+                if (title.isBlank()) continue
+                val poster = attrs.optJSONObject("posterImage")?.optString("medium")
+                    ?.takeIf(String::isNotBlank)
+                add(Movie(
+                    id = "kitsu-${item.optString("id")}",
+                    title = title,
+                    year = attrs.optString("startDate").take(4),
+                    overview = attrs.optString("synopsis"),
+                    posterUrl = poster,
+                    releaseDate = attrs.optString("startDate"),
+                    mediaType = "anime",
+                    sourceName = "Kitsu",
+                ))
             }
-            if (results.size >= 12) break
         }
-        return results.distinctBy { "${it.sourceName}:${it.id}" }
+    } catch (_: Exception) {
+        emptyList()
     }
 
     /** TMDB IDs are metadata IDs, not IMDb IDs; do not send them to arbitrary stream resolvers. */
