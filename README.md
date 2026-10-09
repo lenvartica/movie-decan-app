@@ -1,8 +1,6 @@
-[![Android APK](https://github.com/lenvartica/movie-decan-app/actions/workflows/android.yml/badge.svg)](https://github.com/lenvartica/movie-decan-app/actions/workflows/android.yml)
-
 # Decan Movie Box
 
-Decan Movie Box is a native Android starter app for browsing Internet Archive film records, matching them to TMDB movie or TV metadata, streaming compatible MP4s, and saving permitted titles for offline playback.
+Decan Movie Box is a native Android starter app for browsing licensed Internet Archive films, matching them to TMDB movie or TV metadata, and viewing metadata-only catalogs from selected add-ons. Authorized Internet Archive titles can be streamed and saved for offline playback.
 
 ## Contents
 
@@ -10,6 +8,7 @@ Decan Movie Box is a native Android starter app for browsing Internet Archive fi
 - [Get a TMDB API key](#get-a-tmdb-api-key)
 - [Build locally on Windows](#build-locally-on-windows)
 - [Build an APK with GitHub Actions](#build-an-apk-with-github-actions)
+- [Catalog and metadata add-ons](#catalog-and-metadata-add-ons)
 - [Check that the key works](#check-that-the-key-works)
 - [Troubleshooting](#troubleshooting)
 - [Important key security information](#important-key-security-information)
@@ -136,6 +135,21 @@ env:
 
 This is an unsigned **debug/testing APK**, not a signed production release or Play Store package. GitHub does not expose repository secrets to workflows triggered by pull requests from forks, so the secret-check step will fail for those runs. To build from an external contribution, run the workflow from a trusted branch after reviewing the changes.
 
+## Catalog and metadata add-ons
+
+The **Catalogs** tab connects to a small, fixed list of Stremio-compatible sources for browsing catalog entries and reading their metadata:
+
+- **Cinemeta** — movie and series catalogs/metadata.
+- **Streaming Catalogs** — catalog listings for supported streaming services.
+- **The Movie Database Addon** — TMDB catalog and metadata listings.
+- **TOP Streaming** — catalog listings; its configured manifest URL contains the supplied `temporary_username` path.
+
+Choose a source and catalog, then search if that catalog supports search. These results are for discovery and metadata only. They do not add a play or download action, and the app does not request or use video stream resources from these add-ons. The Internet Archive section remains a separate catalog and only shows entries that pass its license, MP4, and metadata-match checks.
+
+Torrent/debrid stream add-ons from the supplied list are intentionally not integrated. The app also checks each fetched manifest and rejects it if it declares a stream resource, even if the source is in the metadata catalog list. Add-on catalogs and descriptions are supplied by their operators and may change, become unavailable, or contain inaccurate information.
+
+The metadata add-on list is maintained in `AddonCatalogRepository.kt`. To add another catalog-only provider, add its HTTPS manifest URL to `metadataAddons` only after confirming that it is intended for catalog/metadata use and does not provide streams. The manifest is checked at runtime as an additional safeguard; adding an entry does not authorize its content or replace rights review.
+
 ## Check that the key works
 
 - A build can succeed even if the key is missing: the current Gradle configuration defaults the value to an empty string. When the app tries to load the catalog, it will show an error that `TMDB_API_KEY` is missing.
@@ -175,4 +189,4 @@ TMDB metadata and images are provided by TMDB and are subject to TMDB's current 
 
 ## Current app scope
 
-The initial app targets Android 8.0+ phones and tablets, uses English TMDB metadata, and keeps favorites and playback position on-device. Playback uses Media3 with standard controls, supported audio/subtitle track selection, playback speed, fullscreen orientation, and a retry message for playback errors. Downloads use Android's system Download Manager and are saved in the app-specific Movies directory; Android removes those app-specific files when the app is uninstalled. The download confirmation offers compatible MP4 choices, ordered by resolution where available.
+The initial app targets Android 8.0+ phones and tablets, uses English TMDB metadata, and keeps favorites and playback position on-device. It has a separate metadata-only add-on catalog tab; those results cannot be played or downloaded from the add-on. Authorized Internet Archive playback uses Media3 with standard controls, supported audio/subtitle track selection, playback speed, fullscreen orientation, and a retry message for playback errors. Downloads use Android's system Download Manager and are saved in the app-specific Movies directory; Android removes those app-specific files when the app is uninstalled. The download confirmation offers compatible MP4 choices, ordered by resolution where available.

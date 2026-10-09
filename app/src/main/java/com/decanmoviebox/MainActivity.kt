@@ -69,7 +69,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class Destination { BROWSE, SAVED, DOWNLOADS }
+private enum class Destination { BROWSE, CATALOGS, SAVED, DOWNLOADS }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -157,6 +157,12 @@ private fun DecanMovieBoxApp() {
                     label = { Text("Saved") },
                 )
                 NavigationBarItem(
+                    selected = destination == Destination.CATALOGS,
+                    onClick = { destination = Destination.CATALOGS },
+                    icon = { Icon(Icons.Default.Search, contentDescription = "Catalogs and metadata") },
+                    label = { Text("Catalogs") },
+                )
+                NavigationBarItem(
                     selected = destination == Destination.DOWNLOADS,
                     onClick = {
                         destination = Destination.DOWNLOADS
@@ -191,6 +197,7 @@ private fun DecanMovieBoxApp() {
                     padding = padding,
                 )
             }
+            Destination.CATALOGS -> AddonCatalogScreen(padding = padding)
             Destination.DOWNLOADS -> {
                 val entries = remember(refreshDownloads) { library.downloads() }
                 DownloadsScreen(
