@@ -1,3 +1,5 @@
+[![Android APK](https://github.com/lenvartica/movie-decan-app/actions/workflows/android.yml/badge.svg)](https://github.com/lenvartica/movie-decan-app/actions/workflows/android.yml)
+
 # Decan Movie Box
 
 Decan Movie Box is a native Android starter app for browsing Internet Archive film records, matching them to TMDB movie or TV metadata, streaming compatible MP4s, and saving permitted titles for offline playback.
