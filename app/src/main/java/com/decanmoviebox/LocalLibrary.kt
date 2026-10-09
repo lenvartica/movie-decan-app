@@ -1,12 +1,71 @@
 package com.decanmoviebox
 
+import android.app.DownloadManager
 import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import org.json.JSONArray
 import org.json.JSONObject
 
 data class DownloadEntry(val movie: Movie, val downloadId: Long)
 
-class LocalLibrary(context: Context) {
+class LocalLibrary(private val context: Context) {
     private val preferences = context.getSharedPreferences("decan-library", Context.MODE_PRIVATE)
+    private val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+
+    /**
+     * Start a background file download using Android DownloadManager
+     */
+    fun startDownload(movie: Movie, targetUrl: String? = null): Long {
+        val downloadUrl = targetUrl ?: movie.videoUrl
+        if (downloadUrl.isBlank()) return -1L
+
+        val cleanTitle = movie.title.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val fileName = "$cleanTitle.mp4"
+
+        val request = DownloadManager.Request(Uri.parse(downloadUrl))
+            .setTitle(movie.title)
+            .setDescription("Downloading ${movie.title} on Decan Movie Box...")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "DecanMovieBox/$fileName")
+            .setAllowedOverMetered(!wifiOnlyDownloads())
+            .setAllowedOverRoaming(false)
+
+        val downloadId = downloadManager.enqueue(request)
+        addDownload(movie, downloadId)
+        return downloadId
+    }
+
+    /**
+     * Check current download status and progress percentage
+     */
+    fun getDownloadProgress(downloadId: Long): Int {
+        val query = DownloadManager.Query().setFilterById(downloadId)
+        val cursor = downloadManager.query(query)
+        if (cursor != null && cursor.moveToFirst()) {
+            val bytesDownloadedIdx = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+            val bytesTotalIdx = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+
+            if (bytesDownloadedIdx != -1 && bytesTotalIdx != -1) {
+                val downloaded = cursor.getLong(bytesDownloadedIdx)
+                val total = cursor.getLong(bytesTotalIdx)
+                cursor.close()
+                if (total > 0) {
+                    return ((downloaded * 100) / total).toInt()
+                }
+            }
+            cursor.close()
+        }
+        return 0
+    }
+
+    /**
+     * Cancel and remove a download task
+     */
+    fun cancelDownload(downloadId: Long) {
+        downloadManager.remove(downloadId)
+        removeDownload(downloadId)
+    }
 
     fun favorites(): List<Movie> = preferences.getStringSet("favorites", emptySet())
         .orEmpty()
@@ -60,6 +119,14 @@ class LocalLibrary(context: Context) {
         preferences.edit().putStringSet("downloads", entries).apply()
     }
 
+    fun removeDownload(downloadId: Long) {
+        val entries = preferences.getStringSet("downloads", emptySet()).orEmpty().toMutableSet()
+        entries.removeAll {
+            runCatching { JSONObject(it).getLong("downloadId") == downloadId }.getOrDefault(false)
+        }
+        preferences.edit().putStringSet("downloads", entries).apply()
+    }
+
     fun wifiOnlyDownloads(): Boolean = preferences.getBoolean("wifi_only", false)
 
     fun setWifiOnlyDownloads(enabled: Boolean) {
@@ -78,7 +145,9 @@ class LocalLibrary(context: Context) {
         put("videoUrl", movie.videoUrl)
         put("tmdbId", movie.tmdbId)
         put("mediaType", movie.mediaType)
-        put("videoOptions", org.json.JSONArray().apply {
+        put("sourceName", movie.sourceName)
+        put("streamFormat", movie.streamFormat)
+        put("videoOptions", JSONArray().apply {
             movie.videoOptions.forEach { source ->
                 put(JSONObject().put("url", source.url).put("label", source.label).put("height", source.height))
             }
@@ -99,6 +168,8 @@ class LocalLibrary(context: Context) {
             videoUrl = json.getString("videoUrl"),
             tmdbId = json.optInt("tmdbId"),
             mediaType = json.optString("mediaType", "movie"),
+            sourceName = json.optString("sourceName", "Decan Engine"),
+            streamFormat = json.optString("streamFormat", "progressive"),
             videoOptions = json.optJSONArray("videoOptions")?.let { options ->
                 (0 until options.length()).mapNotNull { index ->
                     val option = options.optJSONObject(index) ?: return@mapNotNull null
