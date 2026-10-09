@@ -5,7 +5,7 @@ Decan Movie Box is a native Android starter app for browsing licensed Internet A
 ## Contents
 
 - [What you need](#what-you-need)
-- [Get a TMDB API key](#get-a-tmdb-api-key)
+- [Get TMDB credentials](#get-tmdb-credentials)
 - [Build locally on Windows](#build-locally-on-windows)
 - [Build an APK with GitHub Actions](#build-an-apk-with-github-actions)
 - [Catalog and metadata add-ons](#catalog-and-metadata-add-ons)
@@ -23,22 +23,22 @@ For a local build, install:
 - JDK 17.
 - Gradle 8.9, if building from PowerShell rather than Android Studio.
 
-The GitHub Actions workflow installs JDK 17 and Gradle 8.9 for you. GitHub Actions still needs the repository to contain this project and a repository secret named exactly `TMDB_API_KEY`.
+The GitHub Actions workflow installs JDK 17 and Gradle 8.9 for you. For TMDB, add the repository secret `TMDB_ACCESS_TOKEN` (recommended) or the legacy `TMDB_API_KEY`.
 
-## Get a TMDB API key
+## Get TMDB credentials
 
 1. Create or sign in to your account at [themoviedb.org](https://www.themoviedb.org/).
 2. Open your account settings, then open **API** (usually available at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)).
 3. If TMDB asks you to register an API application, follow its developer/API application form and describe Decan Movie Box accurately. Accept TMDB's current terms and attribution requirements.
-4. Copy the **API Key (v3 auth)**. This app currently uses that key as the `api_key` parameter for TMDB's API requests.
+4. Copy the **API Read Access Token (v4 auth)**. The app sends it to TMDB using the `Authorization: Bearer ...` request header.
 
-Do not use your TMDB account password. The **API Read Access Token (v4)** is a different credential and is not what the current app configuration expects.
+The older **API Key (v3 auth)** is still accepted as a fallback. Prefer the API Read Access Token (v4) for new builds. Do not use your TMDB account password. Never share either credential or commit it into project files.
 
-Keep the key private while developing. Do not paste it into a chat, publish it in a screenshot, or commit it into source files.
+Keep your credentials private while developing. Do not paste them into a chat, publish them in a screenshot, or commit them into source files.
 
 ## Build locally on Windows
 
-### Option A: Keep the key in your personal Gradle properties
+### Option A: Keep the token in your personal Gradle properties
 
 This is the recommended option for local builds because the file is outside the project folder and should not be committed.
 
@@ -56,13 +56,13 @@ This is the recommended option for local builds because the file is outside the 
    C:\Users\YourWindowsName\.gradle\gradle.properties
    ```
 
-4. Add this line, replacing the example with your actual **API Key (v3 auth)**:
+4. Add this line, replacing the example with your actual **API Read Access Token (v4 auth)**:
 
    ```properties
-   TMDB_API_KEY=replace_with_your_v3_api_key
+   TMDB_ACCESS_TOKEN=replace_with_your_v4_read_access_token
    ```
 
-   Do not include quotes or spaces around the `=` sign. Keep the value on one line.
+   Do not include quotes or spaces around the `=` sign. Keep the token on one line.
 5. Save the file. Reopen the project or run Gradle again so it reads the updated property.
 6. In Android Studio, open this project folder and build the `app` debug variant. Or use a PowerShell terminal in the project folder:
 
@@ -76,18 +76,18 @@ This is the recommended option for local builds because the file is outside the 
    app\build\outputs\apk\debug\app-debug.apk
    ```
 
-The Gradle build reads `TMDB_API_KEY` first as a Gradle property and then as an environment variable. A personal Gradle properties file is outside the repository and is not included in Git commits.
+The Gradle build reads `TMDB_ACCESS_TOKEN` first as a Gradle property and then as an environment variable. If it is not set, the build falls back to `TMDB_API_KEY`. A personal Gradle properties file is outside the repository and is not included in Git commits.
 
-### Option B: Set the key for one PowerShell window
+### Option B: Set the token for one PowerShell window
 
 This avoids saving the key in a file, but the key is available to processes launched from that PowerShell window. Open PowerShell in the project folder and run:
 
 ```powershell
-$env:TMDB_API_KEY = "replace_with_your_v3_api_key"
+$env:TMDB_ACCESS_TOKEN = "replace_with_your_v4_read_access_token"
 gradle --no-daemon assembleDebug
 ```
 
-The environment variable applies only to that PowerShell window and its child processes. Open a new PowerShell window and set it again for another build.
+The environment variable applies only to that PowerShell window and its child processes. Open a new PowerShell window and set it again for another build. To use the legacy v3 API key instead, set `$env:TMDB_API_KEY`.
 
 ## Build an APK with GitHub Actions
 
@@ -101,7 +101,7 @@ Create a repository on GitHub and push the project files to the `main` or `maste
 
 GitHub does not discover workflows stored in `github/workflows` without the leading dot. The project workflow in `.github/workflows/android.yml` starts on pushes to `main`/`master`, pull requests, and manual runs.
 
-### 2. Add the key as a GitHub Actions secret
+### 2. Add the token as a GitHub Actions secret
 
 1. Open the repository page on GitHub.
 2. Choose **Settings**.
@@ -110,20 +110,23 @@ GitHub does not discover workflows stored in `github/workflows` without the lead
 5. Enter the following exact name:
 
    ```text
-   TMDB_API_KEY
+   TMDB_ACCESS_TOKEN
    ```
 
-6. Paste your TMDB **API Key (v3 auth)** into the secret value field.
+6. Paste your TMDB **API Read Access Token (v4 auth)** into the secret value field.
 7. Select **Add secret**.
 
-The secret name is case-sensitive for this workflow. Do not add quotation marks or spaces around the key. Do not put the key directly in `android.yml`, the README, Kotlin files, or any other tracked project file. Before building, the workflow checks that the secret is present and fails with a setup message if it is missing.
+The secret name is case-sensitive for this workflow. Do not add quotation marks or spaces around the token. Do not put credentials directly in `android.yml`, the README, Kotlin files, or any other tracked project file. Before building, the workflow checks that `TMDB_ACCESS_TOKEN` or the legacy `TMDB_API_KEY` secret is present and fails with a setup message if neither is set.
 
 The workflow passes the secret to Gradle as an environment variable only during the APK build:
 
 ```yaml
 env:
+  TMDB_ACCESS_TOKEN: ${{ secrets.TMDB_ACCESS_TOKEN }}
   TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
 ```
+
+After changing the secret, start a new workflow run and download its new artifact. An APK you already downloaded will not be updated with a newly added token.
 
 ### 3. Run the workflow and download the APK
 
@@ -152,20 +155,20 @@ The metadata add-on list is maintained in `AddonCatalogRepository.kt`. To add an
 
 ## Check that the key works
 
-- A build can succeed even if the key is missing: the current Gradle configuration defaults the value to an empty string. When the app tries to load the catalog, it will show an error that `TMDB_API_KEY` is missing.
+- The app needs a newly built APK containing either `TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`. If both are missing, Browse shows an error naming the missing TMDB credentials.
 - After installing the APK, open **Browse**. A valid key should allow the catalog search to request TMDB metadata. Internet Archive records still need to meet the app's rights, video, and title-match filters before they appear.
 - If the key was just added locally, start a new Gradle build. If it was just added to GitHub, start a new workflow run; already-built APKs do not receive the new key.
-- An invalid or disabled key generally causes the TMDB request to fail. Check the key in TMDB account settings and verify that you copied the API Key (v3 auth), not the API Read Access Token.
+- An invalid or disabled credential generally causes the TMDB request to fail. Check that you copied the full API Read Access Token (v4 auth), not the API Key (v3 auth), account password, or a truncated value.
 
 ## Troubleshooting
 
-### The app says `TMDB_API_KEY is missing`
+### The app says TMDB credentials are missing
 
-Check that the variable/property is spelled exactly `TMDB_API_KEY`, has a non-empty value, and was present when the APK was built. For GitHub, check **Settings** → **Secrets and variables** → **Actions** and rerun the workflow after adding the repository secret.
+Check that `TMDB_ACCESS_TOKEN` (recommended) or `TMDB_API_KEY` is spelled exactly and has a non-empty value. The credential must be present when the APK is built; adding it afterward does not update an APK already downloaded or installed. For GitHub, check **Settings** → **Secrets and variables** → **Actions** and start a new workflow run.
 
 ### The build succeeds but TMDB returns an authorization error
 
-Confirm the API key is active in TMDB settings, copied without extra whitespace, and is the **API Key (v3 auth)**. The API Read Access Token is not interchangeable with this key in the current implementation.
+Confirm the v4 Read Access Token is active in TMDB settings and copied completely without whitespace. The app sends it as a Bearer token. Alternatively, the older API Key (v3 auth) can be set as `TMDB_API_KEY`.
 
 ### GitHub Actions does not show the Android APK workflow
 
@@ -177,9 +180,9 @@ The app intentionally filters results: an Archive item needs recognized license 
 
 ## Important key security information
 
-GitHub Actions secrets protect the key while it is stored in the repository settings and passed into the build workflow. They do **not** make the key secret after it is compiled into this Android app. The current Gradle configuration writes the value into the APK's generated `BuildConfig`; someone with the APK can extract it.
+GitHub Actions secrets protect the token while it is stored in the repository settings and passed into the build workflow. They do **not** make the credential secret after it is compiled into this Android app. The current Gradle configuration writes it into the APK's generated `BuildConfig`; someone with the APK can extract it.
 
-Treat this setup as suitable for development/testing, not as a secure way to protect a production API credential. Before broad distribution, use a backend or serverless proxy that holds the TMDB credential on the server and applies appropriate rate limits and restrictions. If a key is accidentally committed or otherwise exposed, revoke/rotate it in TMDB and update the local property or GitHub secret.
+Treat this setup as suitable for development/testing, not as a secure way to protect a production API credential. Before broad distribution, use a backend or serverless proxy that holds the TMDB credential on the server and applies appropriate rate limits and restrictions. If a token or key is accidentally committed or otherwise exposed, revoke/rotate it in TMDB and update the local property or GitHub secret.
 
 ## Catalog rights and attribution
 

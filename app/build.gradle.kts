@@ -11,6 +11,13 @@ val tmdbApiKey = providers.gradleProperty("TMDB_API_KEY")
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
+val tmdbAccessToken = providers.gradleProperty("TMDB_ACCESS_TOKEN")
+    .orElse(providers.environmentVariable("TMDB_ACCESS_TOKEN"))
+    .orElse("")
+    .get()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
 android {
     namespace = "com.decanmoviebox"
     compileSdk = 35
@@ -22,6 +29,7 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
+        buildConfigField("String", "TMDB_ACCESS_TOKEN", "\"$tmdbAccessToken\"")
     }
 
     buildFeatures {

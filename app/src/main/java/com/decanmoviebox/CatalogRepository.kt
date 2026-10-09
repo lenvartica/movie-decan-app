@@ -8,10 +8,13 @@ import java.net.URL
 import java.text.Normalizer
 import kotlin.math.max
 
-class CatalogRepository(private val tmdbKey: String) {
+class CatalogRepository(
+    private val tmdbApiKey: String,
+    private val tmdbAccessToken: String = "",
+) {
     fun search(query: String, page: Int = 1): List<Movie> {
-        check(tmdbKey.isNotBlank()) {
-            "TMDB_API_KEY is missing. Add it as a Gradle property or the TMDB_API_KEY environment variable."
+        check(tmdbAccessToken.isNotBlank() || tmdbApiKey.isNotBlank()) {
+            "TMDB credentials are missing. Set TMDB_ACCESS_TOKEN (recommended) or TMDB_API_KEY, then build the app again."
         }
 
         val safeTerms = query.trim().split(Regex("\\s+"))
@@ -85,12 +88,15 @@ class CatalogRepository(private val tmdbKey: String) {
 
     private fun findTmdbMatch(title: String, year: String): JSONObject? {
         val uri = Uri.parse("https://api.themoviedb.org/3/search/multi").buildUpon()
-            .appendQueryParameter("api_key", tmdbKey)
             .appendQueryParameter("query", title)
             .appendQueryParameter("include_adult", "false")
             .appendQueryParameter("language", "en-US")
+            .apply {
+                if (tmdbAccessToken.isBlank()) appendQueryParameter("api_key", tmdbApiKey)
+            }
             .build()
-        val results = getJson(uri.toString()).optJSONArray("results") ?: return null
+        val results = getJson(uri.toString(), tmdbAccessToken.takeIf(String::isNotBlank))
+            .optJSONArray("results") ?: return null
         val archiveYear = year.take(4).toIntOrNull()
         var best: JSONObject? = null
         var bestScore = 0.0
@@ -194,11 +200,13 @@ class CatalogRepository(private val tmdbKey: String) {
         return previous[right.length]
     }
 
-    private fun getJson(address: String): JSONObject {
+    private fun getJson(address: String, bearerToken: String? = null): JSONObject {
         val connection = URL(address).openConnection() as HttpURLConnection
         connection.connectTimeout = 15_000
         connection.readTimeout = 20_000
         connection.setRequestProperty("User-Agent", "DecanMovieBox/1.0 (Android)")
+        connection.setRequestProperty("Accept", "application/json")
+        bearerToken?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
         try {
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream

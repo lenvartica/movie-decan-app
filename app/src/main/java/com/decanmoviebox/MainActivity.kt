@@ -95,7 +95,12 @@ class MainActivity : ComponentActivity() {
 private fun DecanMovieBoxApp() {
     val context = LocalContext.current
     val library = remember { LocalLibrary(context) }
-    val repository = remember { CatalogRepository(BuildConfig.TMDB_API_KEY) }
+    val repository = remember {
+        CatalogRepository(
+            tmdbApiKey = BuildConfig.TMDB_API_KEY,
+            tmdbAccessToken = BuildConfig.TMDB_ACCESS_TOKEN,
+        )
+    }
     val scope = rememberCoroutineScope()
     var destination by remember { mutableStateOf(Destination.BROWSE) }
     var movies by remember { mutableStateOf<List<Movie>>(emptyList()) }
