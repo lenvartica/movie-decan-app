@@ -1,6 +1,8 @@
 # Decan Movie Box
 
-Decan Movie Box is a native Android movie discovery app with TMDB metadata, Kitsu anime metadata, metadata-only add-on catalogs, and a rights-filtered Internet Archive fallback. Playback and downloads are enabled only for direct Internet Archive MP4 files that pass the app’s license metadata checks.
+Decan Movie Box is a native Android movie discovery app with TMDB metadata, Kitsu anime metadata, built-in catalog-only Stremio manifest definitions, and an Internet Archive open-media fallback. The app always searches the open-media catalog alongside metadata results, and exact title/year matches can inherit a verified playable copy. Playback and downloads are enabled only for direct HTTPS Internet Archive MP4 files whose item metadata advertises a recognized public-domain or Creative Commons license.
+
+This project deliberately does not scrape Torrentio, Comet, MediaFusion, third-party pirate players, or other unlicensed stream hosts. TMDB and catalog add-ons provide discovery metadata, not streaming rights. No source can guarantee every commercial title is available to watch or download. HLS playback is supported by Media3 when a lawful source supplies an HLS URL, but offline downloads are restricted to direct MP4 files supported by Android DownloadManager.
 
 ## Contents
 

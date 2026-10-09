@@ -20,7 +20,10 @@ class LocalLibrary(private val context: Context) {
         val downloadUrl = targetUrl ?: movie.videoUrl
         val uri = runCatching { Uri.parse(downloadUrl) }.getOrNull() ?: return -1L
         // Only verified, direct Internet Archive downloads are supported by this app.
-        if (uri.scheme != "https" || (uri.host != "archive.org" && uri.host?.endsWith(".archive.org") != true) || uri.path?.contains("/download/") != true) return -1L
+        val path = uri.path.orEmpty()
+        val hostAllowed = uri.host == "archive.org" || uri.host?.endsWith(".archive.org") == true
+        val directMp4 = path.contains("/download/") && path.endsWith(".mp4", ignoreCase = true)
+        if (uri.scheme != "https" || !hostAllowed || !directMp4) return -1L
 
         val cleanTitle = movie.title.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(90).ifBlank { "movie" }
         val fileName = "${cleanTitle}_${movie.id.hashCode().toUInt().toString(16)}.mp4"

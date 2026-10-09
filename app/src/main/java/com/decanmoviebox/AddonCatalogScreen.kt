@@ -40,18 +40,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import android.content.Intent
-import android.net.Uri
 import coil.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-private data class CatalogSourceInfo(val name: String, val url: String, val description: String)
 
 @Composable
 fun AddonCatalogScreen(
@@ -59,15 +54,7 @@ fun AddonCatalogScreen(
     repository: CatalogRepository,
     onMovieClick: (Movie) -> Unit,
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val sources = remember {
-        listOf(
-            CatalogSourceInfo("TMDB", "https://api.themoviedb.org/3/", "Movies, series, posters, descriptions, seasons and episodes. Requires your own TMDB API credential."),
-            CatalogSourceInfo("Kitsu Anime", "https://kitsu.io/api/edge/trending/anime", "Anime discovery and metadata. Public endpoint; no app-side URL setup required."),
-            CatalogSourceInfo("Internet Archive", "https://archive.org/advancedsearch.php", "Searches open-license/public-domain records and checks for compatible MP4 files before enabling playback."),
-        )
-    }
     var categories by remember { mutableStateOf<Map<String, List<Movie>>>(emptyMap()) }
     var results by remember { mutableStateOf<List<Movie>>(emptyList()) }
     var query by remember { mutableStateOf("") }
@@ -117,9 +104,9 @@ fun AddonCatalogScreen(
     ) {
         item {
             Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
-                Text("Catalogs & Sources", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("Catalogs", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    "Sources are built in. You do not need to add a URL. Catalog metadata is separate from video playback; only rights-checked video files can be played or downloaded.",
+                    "Built-in catalogs are ready to use. Search movies, series and anime without configuring URLs. Titles with a verified, openly licensed video file show Play and Download actions; metadata alone does not guarantee a playable copy.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.LightGray,
                     modifier = Modifier.padding(top = 6.dp),
@@ -143,37 +130,6 @@ fun AddonCatalogScreen(
                     TextButton(onClick = { query = ""; results = emptyList(); loadCatalogs() }) {
                         Text("Refresh catalogs")
                     }
-                }
-            }
-        }
-
-        item {
-            Text(
-                "Connected data sources",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
-            )
-        }
-        items(sources) { source ->
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 5.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1916)),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(13.dp)) {
-                    Text(source.name, fontWeight = FontWeight.Bold, color = Color(0xFFF2B84B))
-                    Text(source.description, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-                    Text(
-                        source.url,
-                        color = Color(0xFFB8C9FF),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(top = 5.dp).clickable {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(source.url)))
-                            }
-                        },
-                    )
                 }
             }
         }

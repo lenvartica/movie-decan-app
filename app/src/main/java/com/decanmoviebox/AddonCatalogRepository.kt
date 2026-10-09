@@ -144,5 +144,8 @@ class AddonCatalogRepository {
  * (TMDB, Kitsu, and Internet Archive) and never asks users to paste a manifest URL.
  */
 val metadataAddons = listOf(
-    MetadataAddon("Cinemeta metadata", "https://v3-cinemeta.strem.io/manifest.json"),
+    MetadataAddon("Cinemeta metadata", "https://v3-cinemeta.strem.fun/manifest.json"),
+    MetadataAddon("Cyberflix catalogs", "https://cyberflix.kables.dev/manifest.json"),
+    MetadataAddon("Streaming catalogs", "https://streaming-catalogs.elfhosted.com/manifest.json"),
+    MetadataAddon("Kitsu anime metadata", "https://anime-kitsu.strem.fun/manifest.json"),
 )

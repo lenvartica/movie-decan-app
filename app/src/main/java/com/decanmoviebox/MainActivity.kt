@@ -776,5 +776,7 @@ private fun enqueueDownload(context: Context, library: LocalLibrary, movie: Movi
 
 private fun isAllowedMediaUrl(value: String): Boolean = runCatching {
     val uri = Uri.parse(value)
-    uri.scheme == "https" && (uri.host == "archive.org" || uri.host?.endsWith(".archive.org") == true) && uri.path?.contains("/download/") == true
+    val hostAllowed = uri.host == "archive.org" || uri.host?.endsWith(".archive.org") == true
+    val path = uri.path.orEmpty()
+    uri.scheme == "https" && hostAllowed && path.contains("/download/") && path.endsWith(".mp4", ignoreCase = true)
 }.getOrDefault(false)

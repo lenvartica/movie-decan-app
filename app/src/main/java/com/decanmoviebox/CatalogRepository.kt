@@ -18,11 +18,14 @@ class CatalogRepository(
         result["Popular TV Series"] = fetchTmdbCategory("tv/popular")
         result["Horror Night"] = fetchTmdbGenre("movie", 27)
         result["Top Anime"] = fetchAnimeCategory()
-        // Keep the home screen useful if TMDB is unavailable or has no playable public-domain fallback.
-        // Avoid a slow Archive.org metadata sweep unless the primary metadata categories failed.
-        if (result.filterKeys { it != "Top Anime" }.values.all { it.isEmpty() }) {
-            val archive = fetchPopularArchiveFilms()
-            if (archive.isNotEmpty()) result["Licensed Archive Films"] = archive
+        // Always expose a separate watchable catalog. TMDB and Kitsu are metadata providers and
+        // do not grant playback rights; this row contains only Archive.org items whose item
+        // metadata advertises a recognized public-domain / Creative Commons license and a direct MP4.
+        val openFilms = fetchPopularArchiveFilms()
+        if (openFilms.isNotEmpty()) result["Watch & Download · Open License"] = openFilms
+        if (result.values.all { it.isEmpty() }) {
+            val addonFallback = fetchAddonMetadata(query = "", page = 1, maxCatalogsPerAddon = 1)
+            if (addonFallback.isNotEmpty()) result["More Catalog Results"] = addonFallback
         }
         return result.filterValues { it.isNotEmpty() }
     }
@@ -32,9 +35,60 @@ class CatalogRepository(
         val tmdb = searchTmdb(query, page)
         // Kitsu is a direct, public anime metadata endpoint and does not require a user-supplied URL.
         val anime = searchKitsuAnime(query, page)
-        // Internet Archive is a separate fallback and only returns entries that pass rights + MP4 checks.
-        val archive = if (page == 1 || tmdb.size + anime.size < 5) searchArchiveOrg(query, page) else emptyList()
-        return (tmdb + anime + archive).distinctBy { "${it.sourceName}:${it.id}" }
+        // Search the playable catalog on every page: a successful TMDB response must not hide
+        // legal, downloadable copies that exist in the open-media catalog.
+        val archive = searchArchiveOrg(query, page)
+        val addonFallback = if (tmdb.size + anime.size < 5) {
+            fetchAddonMetadata(query, page, maxCatalogsPerAddon = 2)
+        } else emptyList()
+        val mergedTmdb = attachVerifiedOpenSources(tmdb, archive)
+        val mergedAnime = attachVerifiedOpenSources(anime, archive)
+        return (mergedTmdb + mergedAnime + addonFallback + archive).distinctBy { "${it.sourceName}:${it.id}" }
+    }
+
+    /**
+     * Catalog-only Stremio metadata fallback. Manifests are hardcoded in metadataAddons and
+     * stream resources are rejected by AddonCatalogRepository. These results never contain
+     * playable URLs; only the separately verified open-media catalog can enable playback.
+     */
+    private fun fetchAddonMetadata(
+        query: String,
+        page: Int,
+        maxCatalogsPerAddon: Int,
+    ): List<Movie> {
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(metadataAddons.size.coerceAtLeast(1))
+        return try {
+            val tasks = metadataAddons.map { addon ->
+                java.util.concurrent.Callable {
+                    runCatching {
+                        val addonRepository = AddonCatalogRepository()
+                        addonRepository.loadCatalogs(addon)
+                            .filter { it.type == "movie" || it.type == "series" }
+                            .take(maxCatalogsPerAddon)
+                            .flatMap { catalog ->
+                                addonRepository.loadItems(catalog, query, page).map { item ->
+                                    Movie(
+                                        id = "addon-${addon.name.hashCode()}-${item.type}-${item.id}",
+                                        title = item.title,
+                                        year = item.year,
+                                        overview = item.overview,
+                                        posterUrl = item.posterUrl,
+                                        mediaType = if (item.type == "series") "tv" else item.type,
+                                        sourceName = addon.name,
+                                    )
+                                }
+                            }
+                    }.getOrDefault(emptyList())
+                }
+            }
+            executor.invokeAll(tasks, 18, java.util.concurrent.TimeUnit.SECONDS)
+                .flatMap { future -> runCatching { future.get() }.getOrDefault(emptyList()) }
+                .distinctBy { "${it.sourceName}:${it.id}" }
+        } catch (_: Exception) {
+            emptyList()
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     private fun searchKitsuAnime(query: String, page: Int): List<Movie> = try {
@@ -71,8 +125,48 @@ class CatalogRepository(
         emptyList()
     }
 
-    /** TMDB IDs are metadata IDs, not IMDb IDs; do not send them to arbitrary stream resolvers. */
-    fun getStreamsForMedia(id: String, type: String = "movie", season: Int = 1, episode: Int = 1): List<VideoSource> = emptyList()
+    /**
+     * Join a metadata result to an open-media copy only when the normalized title is an exact
+     * match and years do not conflict. This deliberately avoids title-only fuzzy stream matching.
+     */
+    private fun attachVerifiedOpenSources(metadata: List<Movie>, openFilms: List<Movie>): List<Movie> {
+        if (metadata.isEmpty() || openFilms.isEmpty()) return metadata
+        val index = openFilms.groupBy { normalizeTitle(it.title) }
+        return metadata.map { item ->
+            if (item.mediaType !in setOf("movie", "tv") || item.mediaType == "tv") return@map item
+            val match = index[normalizeTitle(item.title)]
+                ?.firstOrNull { open ->
+                    item.year.isBlank() || open.year.isBlank() || item.year == open.year
+                }
+                ?: return@map item
+            item.copy(
+                archiveUrl = match.archiveUrl,
+                licenseUrl = match.licenseUrl,
+                videoUrl = match.videoUrl,
+                streamFormat = match.streamFormat,
+                videoOptions = match.videoOptions,
+                sourceName = "TMDB + ${match.sourceName}",
+            )
+        }
+    }
+
+    private fun normalizeTitle(value: String): String = value
+        .lowercase()
+        .replace(Regex("[^\\p{L}\\p{N}]"), "")
+
+    /**
+     * Resolve a known Internet Archive item only after checking its rights metadata again.
+     * The caller must pass an Archive identifier prefixed with "archive:". TMDB IDs are never
+     * treated as stream IDs, and this method intentionally does not scrape third-party pirate hosts.
+     */
+    fun getStreamsForMedia(id: String, type: String = "movie", season: Int = 1, episode: Int = 1): List<VideoSource> {
+        if (type != "movie" || season != 1 || episode != 1 || !id.startsWith("archive:")) return emptyList()
+        val identifier = id.removePrefix("archive:").trim()
+        if (!identifier.matches(Regex("[A-Za-z0-9._-]{1,100}"))) return emptyList()
+        return runCatching {
+            verifiedArchiveMovie(identifier, identifier, "")?.videoOptions.orEmpty()
+        }.getOrDefault(emptyList())
+    }
 
     fun getSeriesSeasons(tmdbId: Int): List<SeriesSeason> {
         if (tmdbId <= 0) return emptyList()
@@ -163,12 +257,14 @@ class CatalogRepository(
             val q = buildString {
                 append("mediatype:movies AND (licenseurl:*creativecommons.org* OR licenseurl:*publicdomain* OR rights:\"public domain\")")
                 if (query.isNotBlank()) {
-                    val terms = query.trim().split(Regex("\\s+")).map { it.replace(Regex("[^\\p{L}\\p{N}'-]"), "") }.filter(String::isNotBlank)
-                    if (terms.isNotEmpty()) {
-                        append(" AND title:(")
-                        append(terms.joinToString(" AND ") { "\"$it\"" })
-                        append(')')
-                    }
+                    val phrase = query.trim()
+                        .replace(Regex("[\\p{Cntrl}]"), " ")
+                        .replace(Regex("[\\p{Punct}]"), " ")
+                        .split(Regex("\\s+"))
+                        .filter(String::isNotBlank)
+                        .take(8)
+                        .joinToString(" ")
+                    if (phrase.isNotBlank()) append(" AND title:(\"$phrase\")")
                 }
             }
             val uri = Uri.parse("https://archive.org/advancedsearch.php").buildUpon()
@@ -176,7 +272,7 @@ class CatalogRepository(
                 .appendQueryParameter("fl[]", "identifier")
                 .appendQueryParameter("fl[]", "title")
                 .appendQueryParameter("fl[]", "year")
-                .appendQueryParameter("rows", "8")
+                .appendQueryParameter("rows", "16")
                 .appendQueryParameter("page", page.coerceAtLeast(1).toString())
                 .appendQueryParameter("sort[]", "downloads desc")
                 .appendQueryParameter("output", "json").build()
