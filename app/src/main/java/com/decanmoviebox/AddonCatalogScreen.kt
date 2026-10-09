@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,13 +47,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.net.Uri
 import coil.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private enum class CatalogSort { NEWEST, TITLE }
+
 @Composable
-fun AddonCatalogScreen(padding: PaddingValues) {
+fun AddonCatalogScreen(
+    padding: PaddingValues,
+    onAuthorizedSource: (Movie) -> Unit,
+) {
     val repository = remember { AddonCatalogRepository() }
     var addon by remember { mutableStateOf(metadataAddons.first()) }
     var catalogs by remember { mutableStateOf<List<AddonCatalog>>(emptyList()) }
@@ -61,10 +70,18 @@ fun AddonCatalogScreen(padding: PaddingValues) {
     var page by remember { mutableIntStateOf(1) }
     var sourceMenu by remember { mutableStateOf(false) }
     var catalogMenu by remember { mutableStateOf(false) }
+    var sortMenu by remember { mutableStateOf(false) }
+    var sort by remember { mutableStateOf(CatalogSort.NEWEST) }
     var loadingCatalogs by remember { mutableStateOf(false) }
     var loadingItems by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedItem by remember { mutableStateOf<AddonCatalogItem?>(null) }
+    var sourceTargetItem by remember { mutableStateOf<AddonCatalogItem?>(null) }
+    var showSourceDialog by remember { mutableStateOf(false) }
+    var sourceUrl by remember { mutableStateOf("") }
+    var rightsText by remember { mutableStateOf("") }
+    var rightsConfirmed by remember { mutableStateOf(false) }
+    var sourceError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(addon) {
         loadingCatalogs = true
@@ -110,7 +127,7 @@ fun AddonCatalogScreen(padding: PaddingValues) {
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
         )
         Text(
-            "Metadata-only sources. Playback and downloads are available only for separately verified licensed titles.",
+            "Add-ons provide discovery metadata only. Attach a direct HTTPS video URL you own or are licensed to use.",
             style = MaterialTheme.typography.bodySmall,
             color = Color.LightGray,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
@@ -137,6 +154,21 @@ fun AddonCatalogScreen(padding: PaddingValues) {
                             },
                         )
                     }
+                }
+            }
+            Box {
+                OutlinedButton(onClick = { sortMenu = true }) {
+                    Text(if (sort == CatalogSort.NEWEST) "Newest" else "A–Z")
+                }
+                DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Newest first") },
+                        onClick = { sort = CatalogSort.NEWEST; sortMenu = false },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Title A–Z") },
+                        onClick = { sort = CatalogSort.TITLE; sortMenu = false },
+                    )
                 }
             }
             Box(Modifier.weight(1f)) {
@@ -199,7 +231,17 @@ fun AddonCatalogScreen(padding: PaddingValues) {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(catalogItems, key = { "${it.sourceName}:${it.type}:${it.id}" }) { item ->
+                items(
+                    if (sort == CatalogSort.TITLE) {
+                        catalogItems.sortedBy { it.title.lowercase() }
+                    } else {
+                        catalogItems.sortedWith(
+                            compareByDescending<AddonCatalogItem> { it.year.toIntOrNull() ?: 0 }
+                                .thenBy { it.title.lowercase() },
+                        )
+                    },
+                    key = { "${it.sourceName}:${it.type}:${it.id}" },
+                ) { item ->
                     AddonCatalogCard(item) { selectedItem = item }
                 }
                 item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
@@ -240,7 +282,7 @@ fun AddonCatalogScreen(padding: PaddingValues) {
                         modifier = Modifier.padding(top = 12.dp),
                     )
                     Text(
-                        "Catalog metadata from ${item.sourceName}. This add-on is not used for video playback or downloads.",
+                        "Catalog metadata from ${item.sourceName}. The add-on itself does not provide playback here.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.LightGray,
                         modifier = Modifier.padding(top = 10.dp),
@@ -248,9 +290,110 @@ fun AddonCatalogScreen(padding: PaddingValues) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { selectedItem = null }) { Text("Close") }
+                Row {
+                    TextButton(onClick = {
+                        sourceTargetItem = item
+                        sourceUrl = ""
+                        rightsText = ""
+                        rightsConfirmed = false
+                        sourceError = null
+                        selectedItem = null
+                        showSourceDialog = true
+                    }) { Text("Add authorized URL") }
+                    TextButton(onClick = { selectedItem = null }) { Text("Close") }
+                }
             },
         )
+    }
+
+    if (showSourceDialog) {
+        val item = sourceTargetItem
+        if (item != null) {
+            AlertDialog(
+                onDismissRequest = { showSourceDialog = false },
+                title = { Text("Add authorized source") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(
+                            "Enter a direct HTTPS video file or HLS playlist for ${item.title}. " +
+                                "Catalog metadata does not grant video rights.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        OutlinedTextField(
+                            value = sourceUrl,
+                            onValueChange = { sourceUrl = it; sourceError = null },
+                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                            label = { Text("HTTPS video URL") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = rightsText,
+                            onValueChange = { rightsText = it },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            label = { Text("License / permission details") },
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = rightsConfirmed,
+                                onCheckedChange = { rightsConfirmed = it },
+                            )
+                            Text("I own or have permission to use this video.")
+                        }
+                        sourceError?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.Button(onClick = {
+                        val uri = Uri.parse(sourceUrl.trim())
+                        val extension = uri.lastPathSegment.orEmpty()
+                            .substringAfterLast('.', "")
+                            .lowercase()
+                        val streamFormat = if (extension == "m3u8") "hls" else "progressive"
+                        val validDirectFile = extension in setOf("mp4", "m4v", "webm", "mov")
+                        val validUrl = uri.scheme == "https" && !uri.host.isNullOrBlank() &&
+                            (streamFormat == "hls" || validDirectFile)
+                        when {
+                            !validUrl -> sourceError =
+                                "Use HTTPS with an HLS (.m3u8) URL or direct MP4, M4V, WebM, or MOV file."
+                            rightsText.isBlank() -> sourceError =
+                                "Enter the license or permission details for this video."
+                            !rightsConfirmed -> sourceError =
+                                "Confirm that you own or have permission to use this video."
+                            else -> {
+                                onAuthorizedSource(
+                                    Movie(
+                                        id = "authorized-${item.sourceName}-${item.id}".replace(
+                                            Regex("[^A-Za-z0-9._-]"), "_",
+                                        ),
+                                        title = item.title,
+                                        year = item.year,
+                                        overview = item.overview,
+                                        posterUrl = item.posterUrl,
+                                        releaseDate = item.year,
+                                        archiveUrl = item.id,
+                                        licenseUrl = rightsText.trim(),
+                                        videoUrl = uri.toString(),
+                                        tmdbId = 0,
+                                        mediaType = item.type,
+                                        videoOptions = if (streamFormat == "hls") emptyList() else listOf(
+                                            VideoSource(uri.toString(), extension.uppercase()),
+                                        ),
+                                        sourceName = "User-provided authorized URL · ${item.sourceName}",
+                                        streamFormat = streamFormat,
+                                    ),
+                                )
+                                showSourceDialog = false
+                            }
+                        }
+                    }) { Text("Continue") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSourceDialog = false }) { Text("Cancel") }
+                },
+            )
+        }
     }
 }
 

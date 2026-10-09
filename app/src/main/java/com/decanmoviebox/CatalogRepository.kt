@@ -12,219 +12,14 @@ class CatalogRepository(
     private val tmdbApiKey: String,
     private val tmdbAccessToken: String = "",
 ) {
-    // Hidden internal Add-on Manifest Endpoints
-    private val hiddenAddonEndpoints = listOf(
-        "https://v3-cinemeta.strem.fun/manifest.json",
-        "https://cyberflix.kables.dev/manifest.json",
-        "https://streaming-catalogs.elfhosted.com/manifest.json",
-        "https://anime-kitsu.strem.fun/manifest.json",
-        "https://torrentio.strem.fun/manifest.json",
-        "https://aiostreams.elfhosted.com/manifest.json",
-        "https://mediafusion.elfhosted.com/manifest.json",
-        "https://comet.elfhosted.com/manifest.json"
-    )
-
-    /**
-     * Categorized movie/series fetching for vertical & horizontal rows
-     */
-    fun getCategories(): Map<String, List<Movie>> {
-        val categories = mutableMapOf<String, List<Movie>>()
-        
-        categories["Trending Now"] = fetchTmdbCategory("trending/all/week")
-        categories["New Movie Releases"] = fetchTmdbCategory("movie/now_playing")
-        categories["Popular TV Series"] = fetchTmdbCategory("tv/popular")
-        categories["Horror Night"] = fetchTmdbGenre("movie", 27) // 27 = Horror Genre ID
-        categories["Top Anime"] = fetchAnimeCategory()
-
-        return categories
-    }
-
-    /**
-     * Search across both TMDB catalog and hidden Stremio/Kitsu add-on engines
-     */
     fun search(query: String, page: Int = 1): List<Movie> {
-        if (query.isBlank()) return emptyList()
-
-        val results = mutableListOf<Movie>()
-        val tmdbResults = searchTmdb(query, page)
-        results.addAll(tmdbResults)
-
-        // Fallback to Archive.org if search yields low results
-        if (results.size < 5) {
-            results.addAll(searchArchiveOrg(query, page))
+        check(tmdbAccessToken.isNotBlank() || tmdbApiKey.isNotBlank()) {
+            "TMDB credentials are missing. Set TMDB_ACCESS_TOKEN (recommended) or TMDB_API_KEY, then build the app again."
         }
 
-        return results.distinctBy { it.id }
-    }
-
-    /**
-     * Fetch direct streams from hidden resolver add-ons for a given media item
-     */
-    fun getStreamsForMedia(imdbId: String, type: String = "movie", season: Int = 1, episode: Int = 1): List<VideoSource> {
-        val streams = mutableListOf<VideoSource>()
-        val mediaKey = if (type == "tv") "$imdbId:$season:$episode" else imdbId
-
-        // Query hidden stream resolvers in parallel / sequence
-        val resolverUrls = listOf(
-            "https://torrentio.strem.fun/stream/$type/$mediaKey.json",
-            "https://comet.elfhosted.com/stream/$type/$mediaKey.json",
-            "https://mediafusion.elfhosted.com/stream/$type/$mediaKey.json"
-        )
-
-        for (endpoint in resolverUrls) {
-            try {
-                val json = getJson(endpoint)
-                val streamArray = json.optJSONArray("streams") ?: continue
-                for (i in 0 until streamArray.length()) {
-                    val streamObj = streamArray.optJSONObject(i) ?: continue
-                    val title = streamObj.optString("title").ifBlank { streamObj.optString("name") }
-                    val url = streamObj.optString("url")
-                    val infoHash = streamObj.optString("infoHash")
-
-                    val streamUrl = when {
-                        url.isNotBlank() -> url
-                        infoHash.isNotBlank() -> "magnet:?xt=urn:btih:$infoHash"
-                        else -> null
-                    } ?: continue
-
-                    streams.add(
-                        VideoSource(
-                            url = streamUrl,
-                            label = title.take(60).replace("\n", " "),
-                            height = parseHeightFromTitle(title)
-                        )
-                    )
-                }
-            } catch (e: Exception) {
-                // Continue checking remaining resolvers silently
-                continue
-            }
-        }
-
-        return streams.sortedByDescending { it.height ?: 0 }
-    }
-
-    private fun fetchTmdbCategory(endpoint: String): List<Movie> {
-        return try {
-            val uri = Uri.parse("https://api.themoviedb.org/3/$endpoint").buildUpon()
-                .appendQueryParameter("language", "en-US")
-                .apply {
-                    if (tmdbAccessToken.isBlank()) appendQueryParameter("api_key", tmdbApiKey)
-                }.build()
-
-            val json = getJson(uri.toString(), tmdbAccessToken.takeIf(String::isNotBlank))
-            val results = json.optJSONArray("results") ?: JSONArray()
-            parseTmdbResults(results)
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun fetchTmdbGenre(mediaType: String, genreId: Int): List<Movie> {
-        return try {
-            val uri = Uri.parse("https://api.themoviedb.org/3/discover/$mediaType").buildUpon()
-                .appendQueryParameter("with_genres", genreId.toString())
-                .appendQueryParameter("language", "en-US")
-                .appendQueryParameter("sort_by", "popularity.desc")
-                .apply {
-                    if (tmdbAccessToken.isBlank()) appendQueryParameter("api_key", tmdbApiKey)
-                }.build()
-
-            val json = getJson(uri.toString(), tmdbAccessToken.takeIf(String::isNotBlank))
-            val results = json.optJSONArray("results") ?: JSONArray()
-            parseTmdbResults(results, defaultType = mediaType)
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun fetchAnimeCategory(): List<Movie> {
-        return try {
-            val json = getJson("https://anime-kitsu.strem.fun/catalog/anime/kitsu-anime-trending.json")
-            val metas = json.optJSONArray("metas") ?: JSONArray()
-            val animeList = mutableListOf<Movie>()
-
-            for (i in 0 until metas.length()) {
-                val item = metas.optJSONObject(i) ?: continue
-                animeList.add(
-                    Movie(
-                        id = item.optString("id"),
-                        title = item.optString("name"),
-                        year = item.optString("releaseInfo").take(4),
-                        overview = item.optString("description"),
-                        posterUrl = item.optString("poster"),
-                        releaseDate = item.optString("releaseInfo"),
-                        archiveUrl = "",
-                        licenseUrl = "",
-                        videoUrl = "",
-                        tmdbId = 0,
-                        mediaType = "anime",
-                        videoOptions = emptyList()
-                    )
-                )
-            }
-            animeList
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun searchTmdb(query: String, page: Int): List<Movie> {
-        return try {
-            val uri = Uri.parse("https://api.themoviedb.org/3/search/multi").buildUpon()
-                .appendQueryParameter("query", query)
-                .appendQueryParameter("page", page.toString())
-                .appendQueryParameter("include_adult", "false")
-                .appendQueryParameter("language", "en-US")
-                .apply {
-                    if (tmdbAccessToken.isBlank()) appendQueryParameter("api_key", tmdbApiKey)
-                }.build()
-
-            val json = getJson(uri.toString(), tmdbAccessToken.takeIf(String::isNotBlank))
-            val results = json.optJSONArray("results") ?: JSONArray()
-            parseTmdbResults(results)
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun parseTmdbResults(array: JSONArray, defaultType: String = "movie"): List<Movie> {
-        val movies = mutableListOf<Movie>()
-        for (i in 0 until array.length()) {
-            val obj = array.optJSONObject(i) ?: continue
-            val mediaType = obj.optString("media_type").ifBlank { defaultType }
-            if (mediaType != "movie" && mediaType != "tv") continue
-
-            val id = obj.optInt("id").toString()
-            val title = obj.optString(if (mediaType == "tv") "name" else "title")
-            val releaseDate = obj.optString(if (mediaType == "tv") "first_air_date" else "release_date")
-            val posterPath = obj.optString("poster_path")
-
-            movies.add(
-                Movie(
-                    id = id,
-                    title = title,
-                    year = releaseDate.take(4),
-                    overview = obj.optString("overview"),
-                    posterUrl = posterPath.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/w500$it" },
-                    releaseDate = releaseDate,
-                    archiveUrl = "",
-                    licenseUrl = "",
-                    videoUrl = "",
-                    tmdbId = obj.optInt("id"),
-                    mediaType = mediaType,
-                    videoOptions = emptyList()
-                )
-            )
-        }
-        return movies
-    }
-
-    private fun searchArchiveOrg(query: String, page: Int): List<Movie> {
         val safeTerms = query.trim().split(Regex("\\s+"))
             .map { it.replace(Regex("[^\\p{L}\\p{N}'-]"), "") }
             .filter(String::isNotBlank)
-        
         val archiveQuery = buildString {
             append("(mediatype:movies OR mediatype:tv)")
             if (safeTerms.isNotEmpty()) {
@@ -239,48 +34,170 @@ class CatalogRepository(
             .appendQueryParameter("fl[]", "identifier")
             .appendQueryParameter("fl[]", "title")
             .appendQueryParameter("fl[]", "year")
+            .appendQueryParameter("fl[]", "licenseurl")
             .appendQueryParameter("rows", "12")
             .appendQueryParameter("page", page.toString())
             .appendQueryParameter("output", "json")
             .build()
+        val docs = getJson(searchUri.toString()).optJSONObject("response")
+            ?.optJSONArray("docs") ?: JSONArray()
 
-        val docs = getJson(searchUri.toString()).optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
         val movies = mutableListOf<Movie>()
-
         for (index in 0 until docs.length()) {
             val doc = docs.optJSONObject(index) ?: continue
             val identifier = doc.optString("identifier").trim()
             val archiveTitle = doc.optString("title").trim()
-            if (identifier.isBlank() || archiveTitle.isBlank()) continue
+            val licenseUrl = doc.optString("licenseurl").trim()
+            if (identifier.isBlank() || archiveTitle.isBlank() || !hasReuseLicense(licenseUrl)) continue
 
-            movies.add(
-                Movie(
-                    id = identifier,
-                    title = archiveTitle,
-                    year = doc.optString("year"),
-                    overview = "",
-                    posterUrl = null,
-                    releaseDate = doc.optString("year"),
-                    archiveUrl = "https://archive.org/details/${Uri.encode(identifier)}",
-                    licenseUrl = "",
-                    videoUrl = "https://archive.org/download/${Uri.encode(identifier)}/${Uri.encode(identifier)}.mp4",
-                    tmdbId = 0,
-                    mediaType = "movie",
-                    videoOptions = emptyList()
-                )
+            val details = getJson("https://archive.org/metadata/${Uri.encode(identifier)}")
+            val metadata = details.optJSONObject("metadata") ?: continue
+            val metadataLicense = metadata.optString("licenseurl").ifBlank { licenseUrl }
+            if (!hasReuseLicense(metadataLicense)) continue
+
+            val title = metadata.optString("title").ifBlank { archiveTitle }
+            val year = metadata.optString("year").ifBlank { doc.optString("year") }
+            val tmdbMovie = findTmdbMatch(title, year) ?: continue
+            val mediaType = tmdbMovie.optString("media_type").ifBlank { "movie" }
+            val videoOptions = findMp4s(identifier, details.optJSONArray("files"))
+            if (videoOptions.isEmpty()) continue
+            val archiveUrl = "https://archive.org/details/${Uri.encode(identifier)}"
+            val licenseName = metadataLicense
+            val tmdbDate = tmdbMovie.optString(
+                if (mediaType == "tv") "first_air_date" else "release_date",
+            )
+
+            movies += Movie(
+                id = identifier,
+                title = tmdbMovie.optString(if (mediaType == "tv") "name" else "title").ifBlank { title },
+                year = tmdbDate.take(4).ifBlank { year },
+                overview = tmdbMovie.optString("overview"),
+                posterUrl = tmdbMovie.optString("poster_path").takeIf(String::isNotBlank)
+                    ?.let { "https://image.tmdb.org/t/p/w500$it" },
+                releaseDate = tmdbDate,
+                archiveUrl = archiveUrl,
+                licenseUrl = licenseName,
+                videoUrl = videoOptions.first().url,
+                tmdbId = tmdbMovie.optInt("id"),
+                mediaType = mediaType,
+                videoOptions = videoOptions,
             )
         }
         return movies
     }
 
-    private fun parseHeightFromTitle(title: String): Int? {
-        return when {
-            title.contains("2160p", ignoreCase = true) || title.contains("4K", ignoreCase = true) -> 2160
-            title.contains("1080p", ignoreCase = true) -> 1080
-            title.contains("720p", ignoreCase = true) -> 720
-            title.contains("480p", ignoreCase = true) -> 480
-            else -> null
+    private fun findTmdbMatch(title: String, year: String): JSONObject? {
+        val uri = Uri.parse("https://api.themoviedb.org/3/search/multi").buildUpon()
+            .appendQueryParameter("query", title)
+            .appendQueryParameter("include_adult", "false")
+            .appendQueryParameter("language", "en-US")
+            .apply {
+                if (tmdbAccessToken.isBlank()) appendQueryParameter("api_key", tmdbApiKey)
+            }
+            .build()
+        val results = getJson(uri.toString(), tmdbAccessToken.takeIf(String::isNotBlank))
+            .optJSONArray("results") ?: return null
+        val archiveYear = year.take(4).toIntOrNull()
+        var best: JSONObject? = null
+        var bestScore = 0.0
+
+        for (index in 0 until results.length()) {
+            val candidate = results.optJSONObject(index) ?: continue
+            val mediaType = candidate.optString("media_type")
+            if (mediaType != "movie" && mediaType != "tv") continue
+            if (candidate.optBoolean("adult")) continue
+            val candidateTitle = candidate.optString(if (mediaType == "tv") "name" else "title")
+            val similarity = titleSimilarity(title, candidateTitle)
+            val candidateYear = candidate.optString(
+                if (mediaType == "tv") "first_air_date" else "release_date",
+            ).take(4).toIntOrNull()
+            val yearCompatible = archiveYear == null || candidateYear == null ||
+                kotlin.math.abs(archiveYear - candidateYear) <= 2
+            val score = if (yearCompatible) similarity else similarity * 0.7
+            if (score > bestScore) {
+                best = candidate
+                bestScore = score
+            }
         }
+        return best?.takeIf { bestScore >= 0.84 }
+    }
+
+    private fun findMp4s(identifier: String, files: JSONArray?): List<VideoSource> {
+        files ?: return emptyList()
+        val options = mutableListOf<VideoSource>()
+        for (index in 0 until files.length()) {
+            val file = files.optJSONObject(index) ?: continue
+            val name = file.optString("name")
+            val format = file.optString("format")
+            if (name.endsWith(".mp4", ignoreCase = true) &&
+                (format.isBlank() || format.contains("mpeg4", ignoreCase = true) ||
+                    format.contains("h.264", ignoreCase = true))
+            ) {
+                val height = file.optString("height").toIntOrNull()
+                val size = file.optString("size").toLongOrNull()
+                val sizeLabel = size?.let { " • ${formatBytes(it)}" }.orEmpty()
+                val label = height?.let { "${it}p$sizeLabel" }
+                    ?: "${name.substringAfterLast('/').removeSuffix(".mp4")}$sizeLabel"
+                options += VideoSource(
+                    url = "https://archive.org/download/${Uri.encode(identifier)}/${Uri.encode(name)}",
+                    label = label,
+                    height = height,
+                )
+            }
+        }
+        return options.sortedByDescending { it.height ?: 0 }.take(8)
+    }
+
+    private fun formatBytes(bytes: Long): String = when {
+        bytes >= 1_000_000_000 -> "${"%.1f".format(bytes / 1_000_000_000.0)} GB"
+        bytes >= 1_000_000 -> "${"%.0f".format(bytes / 1_000_000.0)} MB"
+        else -> "${"%.0f".format(bytes / 1_000.0)} KB"
+    }
+
+    private fun hasReuseLicense(value: String): Boolean {
+        val license = value.trim().lowercase().trimEnd('/')
+        if (license.isBlank()) return false
+        if (license.contains("creativecommons.org/publicdomain/zero/") ||
+            license.contains("creativecommons.org/publicdomain/mark/")
+        ) return true
+
+        val licensePattern = Regex(
+            """creativecommons\.org/licenses/(by|by-sa|by-nd|by-nc|by-nc-sa|by-nc-nd)/[0-9.]+""",
+        )
+        return licensePattern.containsMatchIn(license)
+    }
+
+    private fun titleSimilarity(first: String, second: String): Double {
+        val left = normalize(first)
+        val right = normalize(second)
+        if (left.isBlank() || right.isBlank()) return 0.0
+        if (left == right) return 1.0
+        val distance = levenshtein(left, right)
+        return 1.0 - distance.toDouble() / max(left.length, right.length)
+    }
+
+    private fun normalize(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+    private fun levenshtein(left: String, right: String): Int {
+        var previous = IntArray(right.length + 1) { it }
+        for (leftIndex in left.indices) {
+            val current = IntArray(right.length + 1)
+            current[0] = leftIndex + 1
+            for (rightIndex in right.indices) {
+                val substitutionCost = if (left[leftIndex] == right[rightIndex]) 0 else 1
+                current[rightIndex + 1] = minOf(
+                    current[rightIndex] + 1,
+                    previous[rightIndex + 1] + 1,
+                    previous[rightIndex] + substitutionCost,
+                )
+            }
+            previous = current
+        }
+        return previous[right.length]
     }
 
     private fun getJson(address: String, bearerToken: String? = null): JSONObject {

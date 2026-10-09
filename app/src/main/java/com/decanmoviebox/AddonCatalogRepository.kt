@@ -43,7 +43,7 @@ class AddonCatalogRepository {
             val catalog = catalogs.optJSONObject(index) ?: continue
             val type = catalog.optString("type")
             val id = catalog.optString("id")
-            if (type !in setOf("movie", "series") || id.isBlank()) continue
+            if (type !in setOf("movie", "series", "anime") || id.isBlank()) continue
             results += AddonCatalog(
                 addon = addon,
                 type = type,
