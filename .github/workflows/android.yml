@@ -27,6 +27,15 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Check TMDB API key secret
+        run: |
+          if [ -z "$TMDB_API_KEY" ]; then
+            echo "::error::Add the TMDB_API_KEY repository secret in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
         env:
