@@ -199,3 +199,8 @@ The app targets Android 8.0+ phones and tablets, uses English TMDB metadata when
 Selecting a title opens its details dialog immediately. Provider-enabled APKs search MovieBox, 4KHDHub, and Dramachi for a matching provider item, resolve source URLs and pass source-specific request headers to Media3. If no provider stream is found, the app searches the rights-filtered Internet Archive catalog for an open-license/public-domain MP4 fallback. TMDB ratings are shown when supplied by the API. A provider may still have no playable source for a particular title, and upstream availability can change.
 
 The JNI bridge and native provider build are configured in this project and the GitHub Actions workflow. They were not compiled or tested in this editing environment because Rust, Gradle, and the Android SDK are unavailable here; the first successful CI run and a real Android playback test are still required.
+
+
+## Playback behavior (final UI pass)
+
+Movie cards no longer display the misleading “Info only” label. Tapping a title opens its details and asks the configured MovieBox-TUI native providers (MovieBox, 4KHDHub, and Dramachi) to resolve a stream. The existing bottom navigation provides Browse, Catalogs, Saved, and Downloads. A playable stream is only confirmed after provider resolution succeeds; catalog metadata alone does not guarantee that a title is available to play.

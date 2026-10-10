@@ -331,9 +331,16 @@ private fun DecanMovieBoxAppContent() {
             isFavorite = library.isFavorite(movie),
             isFetchingStreams = fetchingStreams,
             onDismiss = { selectedMovie = null },
-            onPlay = {
-                if (movie.videoUrl.isNotBlank()) {
-                    playerMovie = movie
+            onPlay = { chosenSource ->
+                val selectedForPlayback = chosenSource ?: movie.videoOptions.firstOrNull()
+                val playbackMovie = if (selectedForPlayback != null) movie.copy(
+                    videoUrl = selectedForPlayback.url,
+                    sourceName = "${movie.sourceName} · ${selectedForPlayback.label}",
+                    streamFormat = if (selectedForPlayback.url.contains(".m3u8", ignoreCase = true)) "hls" else movie.streamFormat,
+                    videoOptions = listOf(selectedForPlayback) + movie.videoOptions.filterNot { it.url == selectedForPlayback.url },
+                ) else movie
+                if (playbackMovie.videoUrl.isNotBlank()) {
+                    playerMovie = playbackMovie
                     selectedMovie = null
                 } else {
                     Toast.makeText(context, "No playable stream was found. Check your connection or try another provider result; open-license Archive titles remain available as a fallback.", Toast.LENGTH_LONG).show()
@@ -659,7 +666,6 @@ private fun MovieCard(movie: Movie, onClick: () -> Unit) {
                 listOf(movie.year, when (movie.mediaType) { "tv" -> "Series"; "anime" -> "Anime"; else -> "Movie" }, if (movie.voteAverage > 0) "★ ${String.format(java.util.Locale.US, "%.1f", movie.voteAverage)}/10" else "").filter(String::isNotBlank).joinToString(" · "),
                 color = Color(0xFFF2B84B), style = MaterialTheme.typography.labelSmall,
             )
-            if (movie.videoUrl.isBlank()) Text("Info only", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -671,10 +677,11 @@ private fun MovieDetailsDialog(
     isFavorite: Boolean,
     isFetchingStreams: Boolean,
     onDismiss: () -> Unit,
-    onPlay: () -> Unit,
+    onPlay: (VideoSource?) -> Unit,
     onFavorite: () -> Unit,
     onDownload: () -> Unit,
 ) {
+    var selectedPlaybackSource by remember(movie.id) { mutableStateOf<VideoSource?>(movie.videoOptions.firstOrNull()) }
     var seasons by remember(movie.tmdbId) { mutableStateOf<List<SeriesSeason>>(emptyList()) }
     var selectedSeason by remember(movie.tmdbId) { mutableStateOf<Int?>(null) }
     var episodes by remember(movie.tmdbId) { mutableStateOf<List<SeriesEpisode>>(emptyList()) }
@@ -749,10 +756,26 @@ private fun MovieDetailsDialog(
                         }
                     }
                 }
-                if (movie.videoUrl.isBlank()) {
-                    Text(if (isFetchingStreams) "Searching MovieBox, 4KHDHub and Dramachi for a playable stream…" else "No stream was found from the configured providers. Try another provider result or the “Licensed Films You Can Play” catalog.", color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
+                if (isFetchingStreams) {
+                    Text("Searching configured providers for playable sources…", color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
+                } else if (movie.videoOptions.isNotEmpty()) {
+                    Text("Available sources · choose one to play", color = Color(0xFF9FE3B1), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                    movie.videoOptions.forEachIndexed { index, source ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedPlaybackSource = source }.padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = selectedPlaybackSource == source, onClick = { selectedPlaybackSource = source })
+                            Column(Modifier.weight(1f)) {
+                                Text(source.label.ifBlank { "Source ${index + 1}" }, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                Text(source.height?.let { "${it}p" } ?: if (source.url.contains(".m3u8", true)) "HLS stream" else "Direct stream", color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                } else if (movie.videoUrl.isNotBlank()) {
+                    Text("Playable source found · ${movie.sourceName}", color = Color(0xFF9FE3B1), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
                 } else {
-                    Text("Playable stream found · ${movie.videoOptions.size.coerceAtLeast(1)} source option(s)", color = Color(0xFF9FE3B1), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
+                    Text("No playable source was found. Try another title or the Licensed Films You Can Play catalog.", color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
                 }
             }
         },
@@ -762,8 +785,8 @@ private fun MovieDetailsDialog(
                     TextButton(onClick = onFavorite) { Text(if (isFavorite) "Remove Saved" else "♡ Save") }
                     TextButton(onClick = onDownload, enabled = movie.videoUrl.isNotBlank() && isAllowedMediaUrl(movie.videoUrl)) { Text("Download") }
                 }
-                Button(onClick = onPlay, enabled = movie.videoUrl.isNotBlank() && !isFetchingStreams, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (isFetchingStreams) "Finding playable source…" else "▶ Play")
+                Button(onClick = { onPlay(selectedPlaybackSource) }, enabled = (movie.videoUrl.isNotBlank() || movie.videoOptions.isNotEmpty()) && !isFetchingStreams, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (isFetchingStreams) "Finding playable sources…" else "▶ Play selected source")
                 }
             }
         },
