@@ -29,3 +29,12 @@ The CI workflow performs those steps and publishes `app-debug.apk` as the `decan
 
 ## Latest follow-up
 TV episode rows now initiate provider resolution for the selected season/episode, then refresh the source list before playback. This is source-level implementation only; native compilation and device playback still require the GitHub Actions build and a real-device test.
+
+## Follow-up UI changes
+- Added a right-side overflow menu on the Browse header for Browse, Catalogs, Saved, and Downloads.
+- Expanded movie details to full available dialog width to make the poster, metadata, episode list, and source selector easier to use on phones.
+- Added a Delete action for downloads; this removes the DownloadManager task/file and the local entry.
+- Added TOP Streaming Catalogs to the metadata-only catalog sources.
+- TV episode source selection state now resets when the source options change.
+
+These are not build-verified in this environment. A successful CI APK build and actual Android playback test are still required.

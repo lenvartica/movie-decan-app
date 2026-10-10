@@ -31,3 +31,14 @@
 - [ ] Check playback errors, switching sources, subtitles, and downloads separately.
 
 A successful ZIP integrity check is not a substitute for these build and device tests.
+
+## October 2026 UI / playback follow-up
+- [ ] Open a movie: details dialog should expand to use the full available screen width.
+- [ ] Confirm the top-right overflow menu navigates to Browse, Catalogs, Saved, and Downloads.
+- [ ] Start a licensed download, then use Downloads > Delete and confirm the item/file is removed.
+- [ ] Open a TV title, select a season/episode, and confirm the selected source list refreshes for that episode.
+- [ ] Select a provider stream, start playback, toggle landscape orientation, then return to portrait.
+- [ ] Confirm TOP Streaming Catalogs appears in the catalog source selector and gracefully reports service errors if unavailable.
+- [ ] Build with `gradle --no-daemon -PbuildRustProviders=true assembleDebug` and test the resulting APK on a physical Android device.
+
+This UI update is source-level only until the build workflow and device checks above pass. Stream add-ons that scrape torrent indexes are not preconfigured in this package; only metadata/catalog add-ons and the bundled MovieBox-TUI provider engine are wired here. Configure only stream sources for which you have distribution and playback rights.

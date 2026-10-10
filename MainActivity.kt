@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -74,6 +75,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -285,6 +287,7 @@ private fun DecanMovieBoxAppContent() {
                 onRetry = { if (query.isNotBlank()) performSearch() else loadHomeCategories() },
                 onMovieClick = { loadMovieStreams(it) },
                 onResume = { library.lastMovie()?.let { playerMovie = it } },
+                onNavigate = { destination = it; if (it == Destination.DOWNLOADS) refreshDownloads++; if (it == Destination.SAVED) refreshFavorites++ },
                 loading = loading,
                 error = error,
                 padding = padding,
@@ -317,6 +320,11 @@ private fun DecanMovieBoxAppContent() {
                         } else {
                             Toast.makeText(context, "This download is not finished yet.", Toast.LENGTH_SHORT).show()
                         }
+                    },
+                    onDelete = { entry ->
+                        library.cancelDownload(entry.downloadId)
+                        refreshDownloads++
+                        Toast.makeText(context, "Download removed", Toast.LENGTH_SHORT).show()
                     },
                     padding = padding,
                 )
@@ -448,6 +456,7 @@ private fun BrowseScreen(
     onRetry: () -> Unit,
     onMovieClick: (Movie) -> Unit,
     onResume: () -> Unit,
+    onNavigate: (Destination) -> Unit,
     loading: Boolean,
     error: String?,
     padding: PaddingValues,
@@ -455,7 +464,8 @@ private fun BrowseScreen(
     val context = LocalContext.current
     LazyColumn(Modifier.fillMaxSize().padding(padding)) {
         item {
-            // App Header Branding
+            // App Header Branding and right-side navigation menu
+            var menuExpanded by remember { mutableStateOf(false) }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -466,9 +476,19 @@ private fun BrowseScreen(
                 ) {
                     Text("DM", color = Color(0xFF171411), fontWeight = FontWeight.Black)
                 }
-                Column(Modifier.padding(start = 12.dp)) {
+                Column(Modifier.padding(start = 12.dp).weight(1f)) {
                     Text("DECAN", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("MOVIE", style = MaterialTheme.typography.labelSmall, color = Color(0xFFF2B84B))
+                }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Open navigation menu", tint = Color.White)
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        listOf("Browse" to Destination.BROWSE, "Catalogs" to Destination.CATALOGS, "Saved" to Destination.SAVED, "Downloads" to Destination.DOWNLOADS).forEach { (label, target) ->
+                            androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { menuExpanded = false; onNavigate(target) })
+                        }
+                    }
                 }
             }
 
@@ -599,6 +619,7 @@ private fun DownloadsScreen(
     wifiOnly: Boolean,
     onWifiOnlyChange: (Boolean) -> Unit,
     onPlay: (DownloadEntry) -> Unit,
+    onDelete: (DownloadEntry) -> Unit,
     padding: PaddingValues,
 ) {
     Column(Modifier.fillMaxSize().padding(padding)) {
@@ -646,7 +667,10 @@ private fun DownloadsScreen(
                             Column(Modifier.weight(1f)) {
                                 Text(entry.movie.title, fontWeight = FontWeight.SemiBold, maxLines = 2)
                                 Text("Download ID ${entry.downloadId}", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
-                                TextButton(onClick = { onPlay(entry) }) { Text("Play downloaded file") }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    TextButton(onClick = { onPlay(entry) }) { Text("Play") }
+                                    TextButton(onClick = { onDelete(entry) }) { Text("Delete", color = Color(0xFFFF8A80)) }
+                                }
                             }
                         }
                     }
@@ -698,7 +722,7 @@ private fun MovieDetailsDialog(
     onFavorite: () -> Unit,
     onDownload: () -> Unit,
 ) {
-    var selectedPlaybackSource by remember(movie.id) { mutableStateOf<VideoSource?>(movie.videoOptions.firstOrNull()) }
+    var selectedPlaybackSource by remember(movie.id, movie.videoOptions) { mutableStateOf<VideoSource?>(movie.videoOptions.firstOrNull()) }
     var seasons by remember(movie.tmdbId) { mutableStateOf<List<SeriesSeason>>(emptyList()) }
     var selectedSeason by remember(movie.tmdbId) { mutableStateOf<Int?>(null) }
     var episodes by remember(movie.tmdbId) { mutableStateOf<List<SeriesEpisode>>(emptyList()) }
@@ -735,6 +759,8 @@ private fun MovieDetailsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxSize().padding(vertical = 8.dp),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         title = { Text(movie.title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {

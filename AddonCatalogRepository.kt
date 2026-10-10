@@ -149,4 +149,8 @@ val metadataAddons = listOf(
         "The Movie Database Addon",
         "https://94c8cb9f702d-tmdb-addon.baby-beamup.club/manifest.json",
     ),
+    MetadataAddon(
+        "TOP Streaming Catalogs",
+        "https://top-streaming.stream/username=temporary_username/manifest.json",
+    ),
 )
