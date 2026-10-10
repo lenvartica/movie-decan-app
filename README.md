@@ -1,6 +1,6 @@
 # Decan Movie
 
-Decan Movie is a native Android movie discovery app with TMDB metadata, Kitsu anime metadata, metadata-only add-on catalogs, and a rights-filtered Internet Archive fallback. Playback and downloads are enabled only for direct Internet Archive MP4 files that pass the app’s license metadata checks.
+Decan Movie is a native Android movie discovery app with TMDB metadata, MovieBox-TUI native streaming providers (MovieBox, 4KHDHub, and Dramachi) in provider-enabled APKs, metadata/catalog add-ons, and a rights-filtered Internet Archive fallback. Provider stream downloading and TV episode playback remain follow-up work.
 
 ## Contents
 
@@ -8,7 +8,7 @@ Decan Movie is a native Android movie discovery app with TMDB metadata, Kitsu an
 - [Get TMDB credentials](#get-tmdb-credentials)
 - [Build locally on Windows](#build-locally-on-windows)
 - [Build an APK with GitHub Actions](#build-an-apk-with-github-actions)
-- [Catalog and metadata add-ons](#catalog-and-metadata-add-ons)
+- [Streaming providers](#streaming-providers)
 - [Check that the key works](#check-that-the-key-works)
 - [Troubleshooting](#troubleshooting)
 - [Important key security information](#important-key-security-information)
@@ -133,29 +133,29 @@ After changing the secret, start a new workflow run and download its new artifac
 1. Push a commit to `main` or `master`, or open the repository's **Actions** tab and select **Android APK**.
 2. For a manual build, choose **Run workflow**.
 3. Open the finished workflow run. A successful run has a green check mark.
-4. Scroll to **Artifacts** and download `decan-movie-box-debug`.
+4. Scroll to **Artifacts** and download `decan-movie-debug`.
 5. Extract the downloaded artifact. It contains `app-debug.apk`, which you can install on an Android device for testing.
 
 This is an unsigned **debug/testing APK**, not a signed production release or Play Store package. GitHub does not expose repository secrets to workflows triggered by pull requests from forks, so the secret-check step will fail for those runs. To build from an external contribution, run the workflow from a trusted branch after reviewing the changes.
 
-## Catalog and metadata add-ons
+## Streaming providers
 
-The **Catalogs** tab connects to a small, fixed list of Stremio-compatible sources for browsing catalog entries and reading their metadata:
+The Android APK workflow builds the MovieBox-TUI Rust provider engine as a native JNI library for Android ARM64, ARMv7, and x86_64. The app uses it to search and resolve stream options from these providers:
 
-- **Cinemeta** — movie and series catalogs/metadata.
-- **Streaming Catalogs** — catalog listings for supported streaming services.
-- **The Movie Database Addon** — TMDB catalog and metadata listings.
+- **MovieBox** — search and direct playback stream resolution.
+- **4KHDHub** — search, mirror resolution, and quality options.
+- **Dramachi** — search and stream resolution for supported drama titles.
 
-Choose a source and catalog, then search if that catalog supports search. These results are for discovery and metadata only. They do not add a play or download action, and the app does not request or use video stream resources from these add-ons. Internet Archive fallback results are checked for a recognized open-license/public-domain marker and a compatible MP4 file; they are not automatically matched against TMDB.
+Provider results are included in title search. Opening a title asks the provider engine for playable HTTPS sources and passes source-specific request headers to Media3. When no provider stream is available, the app falls back to its rights-filtered Internet Archive catalog. Provider endpoints can change or block requests, so availability is not guaranteed for every title or network.
 
-Torrent/debrid stream add-ons from the supplied list are intentionally not integrated. The app also checks each fetched manifest and rejects it if it declares a stream resource, even if the source is in the metadata catalog list. Add-on catalogs and descriptions are supplied by their operators and may change, become unavailable, or contain inaccurate information.
+**Build note:** the native provider library is compiled in CI. To build a provider-enabled APK locally, install Rust, the Android NDK, and `cargo-ndk`, then run `gradle --no-daemon -PbuildRustProviders=true assembleDebug`. A regular Android Studio build without that flag can still compile the Kotlin app, but native provider playback will not be available in that APK.
 
-The metadata add-on list is maintained in `AddonCatalogRepository.kt`. To add another catalog-only provider, add its HTTPS manifest URL to `metadataAddons` only after confirming that it is intended for catalog/metadata use and does not provide streams. The manifest is checked at runtime as an additional safeguard; adding an entry does not authorize its content or replace rights review.
+CircleFTP and DhakaFlix BDIX sources are not enabled in Decan Movie by default because the upstream project documents them as region-specific sources for supported Bangladeshi ISP networks. Community Stremio add-ons remain in the Catalogs tab as metadata/catalog sources; this update does not automatically enable their stream resources.
 
 ## Check that the key works
 
-- TMDB-powered home rows and season details need a newly built APK containing either `TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`. If both are missing, TMDB requests fail, but search still attempts catalog-only add-ons and the licensed Internet Archive fallback.
-- After installing the APK, open **Browse**. A valid key should allow the catalog search to request TMDB metadata. If TMDB returns no results, the app tries metadata-only add-ons and then Internet Archive items that pass the open-license and MP4 checks.
+- TMDB-powered home rows and season details need a newly built APK containing either `TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`. If both are missing, TMDB requests fail, but search still attempts the native provider engine when it is included in the APK, then the catalog and licensed Internet Archive fallbacks.
+- After installing the APK, open **Browse**. A valid key should allow the catalog search to request TMDB metadata. Search also queries MovieBox-TUI providers when the APK includes the native bridge; metadata catalogs and Internet Archive items remain fallbacks.
 - If the key was just added locally, start a new Gradle build. If it was just added to GitHub, start a new workflow run; already-built APKs do not receive the new key.
 - An invalid or disabled credential generally causes the TMDB request to fail. Check that you copied the full API Read Access Token (v4 auth), not the API Key (v3 auth), account password, or a truncated value.
 
@@ -191,11 +191,11 @@ TMDB metadata and images are provided by TMDB and are subject to TMDB's current 
 
 ## Current app scope
 
-The app targets Android 8.0+ phones and tablets, uses English TMDB metadata when configured, and keeps favorites and playback position on-device. If TMDB fails, search can fall back to Internet Archive records that pass the app’s open-license and MP4 checks. The Catalogs tab is metadata-only; those add-on results cannot be played or downloaded. Authorized Internet Archive playback uses Media3 with standard controls, supported audio/subtitle track selection, playback speed, fullscreen orientation, and retry after playback errors. Downloads use Android Download Manager and are saved under Downloads/DecanMovieBox. Compatible MP4 choices are ordered by detected resolution where available. TMDB/Kitsu/add-on results may show metadata without playback, and this version does not implement TV season/episode playback.
+The app targets Android 8.0+ phones and tablets, uses English TMDB metadata when configured, and keeps favorites and playback position on-device. Provider-enabled builds query MovieBox, 4KHDHub, and Dramachi for playable sources, and pass required headers to Media3. Internet Archive playback remains a fallback for open-license/public-domain MP4s. Downloads currently remain restricted to supported Internet Archive direct files; native-provider stream downloading and TV season/episode playback are not completed in this update.
 
 
 ## Playback flow update
 
-Selecting a title opens its details dialog immediately. The app then searches the rights-filtered Internet Archive catalog for a close, verified open-license/public-domain match. Matching video files are playable with the Android Media3 player and can be downloaded using Android DownloadManager. TMDB ratings are shown when supplied by the API. Commercial titles that are metadata-only remain clearly marked as unavailable rather than opening a blank player.
+Selecting a title opens its details dialog immediately. Provider-enabled APKs search MovieBox, 4KHDHub, and Dramachi for a matching provider item, resolve source URLs and pass source-specific request headers to Media3. If no provider stream is found, the app searches the rights-filtered Internet Archive catalog for an open-license/public-domain MP4 fallback. TMDB ratings are shown when supplied by the API. A provider may still have no playable source for a particular title, and upstream availability can change.
 
-MovieBox-TUI's Rust provider source is included for reference, but it is not currently compiled as a JNI library or automatically used by the Android app. Third-party provider playback requires a separately implemented and tested Android adapter and source-specific authorization.
+The JNI bridge and native provider build are configured in this project and the GitHub Actions workflow. They were not compiled or tested in this editing environment because Rust, Gradle, and the Android SDK are unavailable here; the first successful CI run and a real Android playback test are still required.

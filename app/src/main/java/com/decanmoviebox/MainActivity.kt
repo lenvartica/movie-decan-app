@@ -210,17 +210,19 @@ private fun DecanMovieBoxAppContent() {
     }
 
     fun loadMovieStreams(movie: Movie) {
-        // Open the details window immediately, then look for a verified playable source in the
-        // rights-filtered public-domain/open-license catalog. Never launch ExoPlayer with an empty URL.
+        // Open details immediately, then ask the configured MovieBox-TUI native providers for real
+        // streams. If no provider can resolve this title, fall back to the rights-checked Archive catalog.
         selectedMovie = movie
         fetchingStreams = movie.videoUrl.isBlank()
         if (movie.videoUrl.isNotBlank()) return
         scope.launch {
-            val match = withContext(Dispatchers.IO) {
-                runCatching { repository.findLicensedPlayableMatch(movie) }.getOrNull()
+            val result = withContext(Dispatchers.IO) {
+                val providerMatch = runCatching { repository.getStreamsForMedia(movie) }.getOrNull()
+                if (providerMatch?.videoUrl?.isNotBlank() == true) providerMatch
+                else runCatching { repository.findLicensedPlayableMatch(movie) }.getOrNull()
             }
             if (selectedMovie?.id == movie.id) {
-                selectedMovie = if (match?.videoUrl?.isNotBlank() == true) match else movie
+                selectedMovie = result?.takeIf { it.videoUrl.isNotBlank() } ?: movie
                 fetchingStreams = false
             }
         }
@@ -334,7 +336,7 @@ private fun DecanMovieBoxAppContent() {
                     playerMovie = movie
                     selectedMovie = null
                 } else {
-                    Toast.makeText(context, "No verified playable source was found for this title. Try the Licensed Films You Can Play row or search for a public-domain title.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "No playable stream was found. Check your connection or try another provider result; open-license Archive titles remain available as a fallback.", Toast.LENGTH_LONG).show()
                 }
             },
             onFavorite = {
@@ -748,9 +750,9 @@ private fun MovieDetailsDialog(
                     }
                 }
                 if (movie.videoUrl.isBlank()) {
-                    Text(if (isFetchingStreams) "Searching the verified open-license catalog for a playable copy…" else "No verified playable source was found for this title. Try the ‘Licensed Films You Can Play’ catalog. Metadata alone is not a video file.", color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
+                    Text(if (isFetchingStreams) "Searching MovieBox, 4KHDHub and Dramachi for a playable stream…" else "No stream was found from the configured providers. Try another provider result or the “Licensed Films You Can Play” catalog.", color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
                 } else {
-                    Text("Open-license metadata and MP4 found · ${movie.videoOptions.size.coerceAtLeast(1)} file option(s)", color = Color(0xFF9FE3B1), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
+                    Text("Playable stream found · ${movie.videoOptions.size.coerceAtLeast(1)} source option(s)", color = Color(0xFF9FE3B1), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
                 }
             }
         },

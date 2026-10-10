@@ -152,7 +152,7 @@ class LocalLibrary(private val context: Context) {
         put("streamFormat", movie.streamFormat)
         put("videoOptions", JSONArray().apply {
             movie.videoOptions.forEach { source ->
-                put(JSONObject().put("url", source.url).put("label", source.label).put("height", source.height))
+                put(JSONObject().put("url", source.url).put("label", source.label).put("height", source.height ?: 0).put("headers", JSONObject(source.headers)))
             }
         })
     }.toString()
@@ -180,7 +180,10 @@ class LocalLibrary(private val context: Context) {
                     VideoSource(
                         url = option.optString("url"),
                         label = option.optString("label"),
-                        height = option.optInt("height").takeIf { option.has("height") },
+                        height = option.optInt("height").takeIf { it > 0 },
+                        headers = option.optJSONObject("headers")?.let { obj ->
+                            buildMap { val keys = obj.keys(); while (keys.hasNext()) { val key = keys.next(); put(key, obj.optString(key)) } }
+                        } ?: emptyMap(),
                     )
                 }
             }.orEmpty(),

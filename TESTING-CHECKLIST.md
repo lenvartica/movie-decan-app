@@ -1,10 +1,19 @@
 # Decan Movie verification checklist
 
-1. Build the debug APK using the included GitHub Actions workflow or Android Studio (JDK 17, Android SDK 35, Gradle 8.9).
-2. Launch on an Android 8.0+ device and accept the Terms and Conditions.
-3. Confirm Browse loads; with no TMDB credentials, the app should still attempt to show anime metadata and rights-filtered Internet Archive films.
-4. Open a licensed archive film: details should show title, poster, rights information and quality options.
-5. Tap Play and confirm ExoPlayer plays the direct MP4.
-6. Download the film, wait for Android DownloadManager completion, and play it from Downloads.
-7. Open a normal TMDB-only title: its details should show rating and metadata, search for a verified licensed match, and keep Play disabled if no match is found.
-8. Test portrait/landscape, back navigation, favorites, search, mobile data/Wi-Fi settings, and interrupted network requests.
+## Build verification
+1. Push the project to GitHub and run the **Android APK** workflow. Confirm `buildRustProviderBridge` completes for ARM64, ARMv7, and x86_64 and that `assembleDebug` succeeds.
+2. Download the `decan-movie-debug` artifact and install `app-debug.apk` on an Android 8.0+ device.
+3. Confirm the APK contains `libdecanmovie_bridge.so` for the device ABI; if the native library is absent, provider search will be unavailable.
+
+## Streaming-provider verification
+4. Search a known title and confirm results from MovieBox, 4KHDHub, and/or Dramachi appear when upstream providers are reachable.
+5. Open a provider result. Confirm the details dialog searches for streams, shows source options, and enables Play only after a non-empty HTTPS stream URL is returned.
+6. Play a stream with Media3 and test seeking, pause/resume, quality selection, back navigation, and portrait/landscape. Confirm source-specific headers are honored for streams that require them.
+7. Test an unavailable title, a provider timeout, and offline mode. The app should not crash or open a blank player; it should continue to the next provider or the Internet Archive fallback.
+8. Search a TMDB result that is also present at a provider. Confirm the app searches the provider by title and does not send the TMDB ID as the provider ID.
+
+## Existing functionality
+9. Open a qualifying open-license Internet Archive film, verify metadata and MP4 playback, and test Android DownloadManager completion.
+10. Test favorites, playback progress, search, catalogs, Wi-Fi/mobile-data download settings, and interrupted network requests.
+
+**Not yet implemented in this update:** downloading native-provider streams, TV season/episode stream selection, subtitle forwarding for native-provider streams, and BDIX provider enablement. This checklist is for verification; no Android build/device test has been performed in the editing environment.

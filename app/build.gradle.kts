@@ -64,8 +64,31 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+}
+
+
+// Optional native MovieBox-TUI provider engine. CI builds this for Android ABIs with cargo-ndk.
+// A regular Android Studio build remains possible without Rust installed; provider streaming is
+// enabled in APKs built with -PbuildRustProviders=true.
+val buildRustProviders = providers.gradleProperty("buildRustProviders").orElse("false").get().toBoolean()
+val rustJniLibs = layout.buildDirectory.dir("generated/rustJniLibs")
+android.sourceSets.getByName("main").jniLibs.srcDir(rustJniLibs)
+if (buildRustProviders) {
+    val buildRustProviderBridge = tasks.register<Exec>("buildRustProviderBridge") {
+        workingDir(rootProject.file("native/decanmovie-bridge"))
+        commandLine(
+            "cargo", "ndk",
+            "-t", "arm64-v8a",
+            "-t", "armeabi-v7a",
+            "-t", "x86_64",
+            "-o", rustJniLibs.get().asFile.absolutePath,
+            "build", "--release"
+        )
+    }
+    tasks.named("preBuild").configure { dependsOn(buildRustProviderBridge) }
 }

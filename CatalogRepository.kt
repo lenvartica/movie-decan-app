@@ -39,7 +39,8 @@ class CatalogRepository(
         val tmdb = searchTmdb(query, page)
         // If TMDB returns no results (including credential/API outages), try catalog-only add-ons.
         val addonResults = if (tmdb.isEmpty()) searchMetadataAddons(query, page) else emptyList()
-        val combined = tmdb + addonResults
+        val nativeProviderResults = runCatching { NativeProviderRepository().search(query, page) }.getOrDefault(emptyList())
+        val combined = tmdb + addonResults + nativeProviderResults
         val archive = if (page == 1 || combined.size < 5) searchArchiveOrg(query, page) else emptyList()
         return (combined + archive).distinctBy { "${it.sourceName}:${it.id}" }
     }
@@ -120,8 +121,9 @@ class CatalogRepository(
         return overlap / (aw.size + bw.size - overlap)
     }
 
-    /** Stream resolution is deliberately not guessed from a TMDB metadata ID. */
-    fun getStreamsForMedia(id: String, type: String = "movie", season: Int = 1, episode: Int = 1): List<VideoSource> = emptyList()
+    /** Resolve provider-specific IDs only after the title has been found on that provider. */
+    fun getStreamsForMedia(movie: Movie, season: Int = 0, episode: Int = 0): Movie? =
+        runCatching { NativeProviderRepository().streams(movie, season, episode) }.getOrNull()
 
     fun getSeriesSeasons(tmdbId: Int): List<SeriesSeason> {
         if (tmdbId <= 0) return emptyList()

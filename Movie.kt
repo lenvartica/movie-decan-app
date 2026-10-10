@@ -4,6 +4,7 @@ data class VideoSource(
     val url: String,
     val label: String,
     val height: Int? = null,
+    val headers: Map<String, String> = emptyMap(),
 )
 
 data class Movie(

@@ -46,6 +46,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
@@ -59,11 +61,14 @@ fun PlayerScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     
-    var currentVideoUrl by remember { mutableStateOf(movie.videoUrl) }
-    var selectedQualityLabel by remember { mutableStateOf(movie.videoOptions.firstOrNull()?.label ?: "Auto") }
+    var currentVideoUrl by remember(movie.id) { mutableStateOf(movie.videoOptions.firstOrNull()?.url ?: movie.videoUrl) }
+    var currentVideoHeaders by remember(movie.id) { mutableStateOf(movie.videoOptions.firstOrNull()?.headers ?: emptyMap()) }
+    var selectedQualityLabel by remember(movie.id) { mutableStateOf(movie.videoOptions.firstOrNull()?.label ?: "Auto") }
 
-    val player = remember(currentVideoUrl) {
-        ExoPlayer.Builder(context).build().apply {
+    val player = remember(currentVideoUrl, currentVideoHeaders) {
+        val httpFactory = DefaultHttpDataSource.Factory().setDefaultRequestProperties(currentVideoHeaders)
+        val mediaSourceFactory = DefaultMediaSourceFactory(context).setDataSourceFactory(httpFactory)
+        ExoPlayer.Builder(context).setMediaSourceFactory(mediaSourceFactory).build().apply {
             setMediaItem(
                 MediaItem.Builder()
                     .setUri(currentVideoUrl)
@@ -158,6 +163,7 @@ fun PlayerScreen(
                                         onClick = {
                                             selectedQualityLabel = option.label
                                             currentVideoUrl = option.url
+                                            currentVideoHeaders = option.headers
                                             qualityMenu = false
                                         }
                                     )

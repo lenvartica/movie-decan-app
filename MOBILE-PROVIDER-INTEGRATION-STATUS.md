@@ -1,15 +1,27 @@
-# Decan Movie mobile playback status
+# Decan Movie — MovieBox-TUI provider integration status
 
-## Fixed in this update
-- Selecting a title opens the details window immediately.
-- The app now asynchronously searches the rights-filtered Internet Archive catalog for a close title match before enabling playback.
-- A dedicated `Licensed Films You Can Play` home row is loaded independently of TMDB availability.
-- TMDB vote averages are carried through the model, saved library, and displayed on cards/details.
-- The Play action refuses to open the player when the URL is empty and gives a useful message instead.
-- GitHub Actions can build the APK without requiring TMDB credentials; the app still supports optional TMDB key/token configuration.
+## Wired into the Android app
+- Added the full MovieBox-TUI Rust source tree under `native/MovieBox-Tui` (MIT OR Apache-2.0 upstream licensing files retained).
+- Added a JNI `cdylib` bridge in `native/decanmovie-bridge`.
+- Configured native provider search and stream resolution for MovieBox, 4KHDHub, and Dramachi.
+- Search results from those providers are appended to TMDB/add-on search results when the native library is present.
+- Opening a title resolves provider-specific IDs rather than treating TMDB IDs as stream-provider IDs. For TMDB titles, provider search is used first and matching is conservative by title/year.
+- Stream options include quality labels and HTTP headers; Media3 receives those headers during playback.
+- GitHub Actions installs Rust targets, Android NDK, and `cargo-ndk`, builds the native bridge, and then builds the APK.
+- BDIX CircleFTP/DhakaFlix are excluded from the enabled list because upstream documents them as region-specific.
 
-## Important boundaries
-- Internet Archive playback/download only accepts files whose metadata indicates an open license or public-domain status and that are direct MP4 URLs.
-- TMDB, Kitsu, and metadata add-on results are discovery metadata, not video files. A title is playable only when a separately verified media URL is found.
-- MovieBox-TUI Rust sources are included as reference, but this Android app does not yet compile them into a JNI/NDK library or invoke their scrapers. Some provider implementations include provider-specific request signing, anti-bot behavior, or mirror resolution; they require an explicit Android port and separate review before integration.
-- No Android SDK/Gradle installation is available in the editing environment, so an APK build and physical-device test could not be run here. The GitHub Actions workflow is configured to perform the build after the ZIP is pushed to GitHub.
+## Not claimed as verified
+- This environment has no Cargo/Rust, Gradle, or Android SDK, so neither the Rust bridge nor the APK could be compiled here.
+- No physical Android device playback test was possible. The first successful GitHub Actions build and a device test are required to verify the JNI signatures, native dependency build, upstream API availability, and stream compatibility.
+- Provider APIs/mirrors can change or block requests. A provider may return no streams for a given title.
+- Native-provider downloads, subtitle forwarding, and TV season/episode playback are not completed by this patch; Android DownloadManager remains restricted to the supported Internet Archive direct-file path.
+- Community add-ons in the Catalogs tab remain catalog/metadata-only.
+
+## Local provider-enabled build
+Install a Rust stable toolchain, Android SDK/NDK, and `cargo-ndk`; install Android targets `aarch64-linux-android`, `armv7-linux-androideabi`, and `x86_64-linux-android`; set `ANDROID_NDK_HOME`; then run from the project root:
+
+```sh
+gradle --no-daemon -PbuildRustProviders=true assembleDebug
+```
+
+The CI workflow performs those steps and publishes `app-debug.apk` as the `decan-movie-debug` artifact on success.
