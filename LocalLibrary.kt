@@ -18,16 +18,18 @@ class LocalLibrary(private val context: Context) {
      */
     fun startDownload(movie: Movie, targetUrl: String? = null): Long {
         val downloadUrl = targetUrl ?: movie.videoUrl
-        if (downloadUrl.isBlank()) return -1L
+        val uri = runCatching { Uri.parse(downloadUrl) }.getOrNull() ?: return -1L
+        // Only verified, direct Internet Archive downloads are supported by this app.
+        if (uri.scheme != "https" || (uri.host != "archive.org" && uri.host?.endsWith(".archive.org") != true) || uri.path?.contains("/download/") != true) return -1L
 
-        val cleanTitle = movie.title.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-        val fileName = "$cleanTitle.mp4"
+        val cleanTitle = movie.title.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(90).ifBlank { "movie" }
+        val fileName = "${cleanTitle}_${movie.id.hashCode().toUInt().toString(16)}.mp4"
 
-        val request = DownloadManager.Request(Uri.parse(downloadUrl))
+        val request = DownloadManager.Request(uri)
             .setTitle(movie.title)
-            .setDescription("Downloading ${movie.title} on Decan Movie Box...")
+            .setDescription("Downloading ${movie.title} on Decan Movie...")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "DecanMovieBox/$fileName")
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "DecanMovie/$fileName")
             .setAllowedOverMetered(!wifiOnlyDownloads())
             .setAllowedOverRoaming(false)
 

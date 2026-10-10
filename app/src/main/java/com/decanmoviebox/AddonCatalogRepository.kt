@@ -139,13 +139,14 @@ class AddonCatalogRepository {
     }
 }
 
-/**
- * Kept for optional catalog-only compatibility. The main Catalogs screen uses direct public APIs
- * (TMDB, Kitsu, and Internet Archive) and never asks users to paste a manifest URL.
- */
 val metadataAddons = listOf(
-    MetadataAddon("Cinemeta metadata", "https://v3-cinemeta.strem.fun/manifest.json"),
-    MetadataAddon("Cyberflix catalogs", "https://cyberflix.kables.dev/manifest.json"),
-    MetadataAddon("Streaming catalogs", "https://streaming-catalogs.elfhosted.com/manifest.json"),
-    MetadataAddon("Kitsu anime metadata", "https://anime-kitsu.strem.fun/manifest.json"),
+    MetadataAddon("Cinemeta", "https://v3-cinemeta.strem.io/manifest.json"),
+    MetadataAddon(
+        "Streaming Catalogs",
+        "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club/manifest.json",
+    ),
+    MetadataAddon(
+        "The Movie Database Addon",
+        "https://94c8cb9f702d-tmdb-addon.baby-beamup.club/manifest.json",
+    ),
 )

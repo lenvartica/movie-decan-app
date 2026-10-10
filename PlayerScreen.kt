@@ -168,9 +168,10 @@ fun PlayerScreen(
 
                     // Direct Download Button
                     IconButton(onClick = {
-                        library.startDownload(movie, currentVideoUrl)
-                        Toast.makeText(context, "Download started: ${movie.title}", Toast.LENGTH_SHORT).show()
-                    }) {
+                        val downloadId = runCatching { library.startDownload(movie, currentVideoUrl) }.getOrDefault(-1L)
+                        val message = if (downloadId > 0L) "Download started: ${movie.title}" else "This source cannot be downloaded here. Use a verified licensed MP4 source."
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }, enabled = currentVideoUrl.startsWith("https://archive.org/download/") || currentVideoUrl.startsWith("https://ia") ) {
                         Icon(Icons.Default.Download, "Download Movie", tint = Color.White)
                     }
 

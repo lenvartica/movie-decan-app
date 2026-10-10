@@ -22,3 +22,17 @@ data class Movie(
     val streamFormat: String = "progressive",
     val videoOptions: List<VideoSource> = emptyList(),
 )
+
+
+data class SeriesSeason(
+    val seasonNumber: Int,
+    val name: String,
+    val episodeCount: Int,
+)
+
+data class SeriesEpisode(
+    val episodeNumber: Int,
+    val name: String,
+    val airDate: String = "",
+    val overview: String = "",
+)
