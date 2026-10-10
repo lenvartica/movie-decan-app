@@ -19,6 +19,7 @@ data class Movie(
     val tmdbId: Int = 0,
     val mediaType: String = "movie",
     val sourceName: String = "Decan Engine",
+    val voteAverage: Double = 0.0,
     val streamFormat: String = "progressive",
     val videoOptions: List<VideoSource> = emptyList(),
 )

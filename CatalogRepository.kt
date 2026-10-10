@@ -14,16 +14,23 @@ class CatalogRepository(
     fun getCategories(): Map<String, List<Movie>> {
         val result = linkedMapOf<String, List<Movie>>()
         result["Trending Now"] = fetchTmdbCategory("trending/all/week")
+        result["Popular Movies"] = fetchTmdbCategory("movie/popular")
+        result["Top Rated Movies"] = fetchTmdbCategory("movie/top_rated")
         result["New Movie Releases"] = fetchTmdbCategory("movie/now_playing")
+        result["Upcoming Movies"] = fetchTmdbCategory("movie/upcoming")
         result["Popular TV Series"] = fetchTmdbCategory("tv/popular")
+        result["Top Rated TV"] = fetchTmdbCategory("tv/top_rated")
+        result["Currently Airing"] = fetchTmdbCategory("tv/on_the_air")
+        result["Action & Adventure"] = fetchTmdbGenre("movie", 28)
+        result["Comedy"] = fetchTmdbGenre("movie", 35)
+        result["Drama"] = fetchTmdbGenre("movie", 18)
+        result["Science Fiction"] = fetchTmdbGenre("movie", 878)
+        result["Animation"] = fetchTmdbGenre("movie", 16)
         result["Horror Night"] = fetchTmdbGenre("movie", 27)
         result["Top Anime"] = fetchAnimeCategory()
-        // Keep the home screen useful if TMDB is unavailable or has no playable public-domain fallback.
-        // Avoid a slow Archive.org metadata sweep unless the primary metadata categories failed.
-        if (result.filterKeys { it != "Top Anime" }.values.all { it.isEmpty() }) {
-            val archive = fetchPopularArchiveFilms()
-            if (archive.isNotEmpty()) result["Licensed Archive Films"] = archive
-        }
+        // Always expose a small row of rights-checked playable films, not only when TMDB fails.
+        val archive = fetchPopularArchiveFilms()
+        if (archive.isNotEmpty()) result["Licensed Films You Can Play"] = archive
         return result.filterValues { it.isNotEmpty() }
     }
 
@@ -69,7 +76,51 @@ class CatalogRepository(
         return results.distinctBy { "${it.sourceName}:${it.id}" }
     }
 
-    /** TMDB IDs are metadata IDs, not IMDb IDs; do not send them to arbitrary stream resolvers. */
+    /**
+     * Finds an openly licensed Internet Archive title with a close title match. TMDB metadata IDs
+     * are never treated as provider IDs. This is a safe fallback for titles that exist in the
+     * verified public-domain/open-license catalog; it does not pretend every commercial title
+     * has a playable source.
+     */
+    fun findLicensedPlayableMatch(movie: Movie): Movie? {
+        if (movie.videoUrl.isNotBlank()) return movie
+        if (movie.mediaType == "tv" || movie.title.isBlank()) return null
+        val candidates = searchArchiveOrg(movie.title, 1)
+        val wanted = normalizeTitle(movie.title)
+        return candidates
+            .map { candidate -> candidate to titleSimilarity(wanted, normalizeTitle(candidate.title)) }
+            .filter { it.second >= 0.72 }
+            .maxByOrNull { it.second }
+            ?.first
+            ?.let { playable ->
+                playable.copy(
+                    id = movie.id,
+                    title = movie.title,
+                    year = movie.year.ifBlank { playable.year },
+                    overview = movie.overview.ifBlank { playable.overview },
+                    posterUrl = movie.posterUrl ?: playable.posterUrl,
+                    tmdbId = movie.tmdbId,
+                    mediaType = movie.mediaType,
+                    sourceName = "${playable.sourceName} · matched title",
+                    voteAverage = movie.voteAverage,
+                )
+            }
+    }
+
+    private fun normalizeTitle(value: String): String = value.lowercase()
+        .replace(Regex("\\([^)]*\\)"), " ")
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .trim().replace(Regex("\\s+"), " ")
+
+    private fun titleSimilarity(a: String, b: String): Double {
+        if (a.isBlank() || b.isBlank()) return 0.0
+        if (a == b) return 1.0
+        val aw = a.split(" ").toSet(); val bw = b.split(" ").toSet()
+        val overlap = aw.intersect(bw).size.toDouble()
+        return overlap / (aw.size + bw.size - overlap)
+    }
+
+    /** Stream resolution is deliberately not guessed from a TMDB metadata ID. */
     fun getStreamsForMedia(id: String, type: String = "movie", season: Int = 1, episode: Int = 1): List<VideoSource> = emptyList()
 
     fun getSeriesSeasons(tmdbId: Int): List<SeriesSeason> {
@@ -148,6 +199,7 @@ class CatalogRepository(
                 overview = obj.optString("overview"),
                 posterUrl = poster.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/w500$it" },
                 releaseDate = date, tmdbId = id, mediaType = type, sourceName = "TMDB",
+                voteAverage = obj.optDouble("vote_average", 0.0),
             )
         }
         return result

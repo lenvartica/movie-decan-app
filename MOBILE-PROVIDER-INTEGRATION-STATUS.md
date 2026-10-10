@@ -1,23 +1,15 @@
-# Decan Movie — Mobile Provider Integration Pack
+# Decan Movie mobile playback status
 
-This package combines the supplied Decan Movie Android project with a preserved reference copy of MovieBox-TUI's provider source and its MIT/Apache license notices. The Android display name remains **Decan Movie**.
+## Fixed in this update
+- Selecting a title opens the details window immediately.
+- The app now asynchronously searches the rights-filtered Internet Archive catalog for a close title match before enabling playback.
+- A dedicated `Licensed Films You Can Play` home row is loaded independently of TMDB availability.
+- TMDB vote averages are carried through the model, saved library, and displayed on cards/details.
+- The Play action refuses to open the player when the URL is empty and gives a useful message instead.
+- GitHub Actions can build the APK without requiring TMDB credentials; the app still supports optional TMDB key/token configuration.
 
-## Included
-- Existing Kotlin/Jetpack Compose Android application and ExoPlayer player.
-- First-run Terms and Conditions gate. Users must tick the agreement checkbox before entering the app; acceptance is stored locally for terms version 1.
-- Expanded metadata catalogs and the existing saved/download features.
-- `third_party/MovieBox-Tui-provider-source-reference/`: original provider modules, provider documentation, Cargo manifest and upstream license texts.
-
-## Important integration status
-The original provider modules are Rust code designed for MovieBox-TUI's async Rust service. They are included as source reference, **not silently represented as already linked into the Android APK**. A working native integration requires a Rust `cdylib`/JNI boundary, Android NDK toolchains for supported ABIs, async-runtime adaptation, and Android-specific networking/player/download glue. The original TUI's terminal UI and desktop player launcher are not Android UI components. Rust-to-Java/Kotlin native integration and Android `.so` packaging are described by the Android NDK/JNI docs and cargo-ndk project.
-
-No prebuilt `.so` libraries are included, and no successful Gradle/NDK build or on-device provider playback test is claimed. See `third_party/.../docs/providers.md` for provider descriptions. Provider access may depend on service availability, provider terms, regional network reachability and authorization.
-
-## Terms
-The app now presents a first-run acceptance screen. It is a practical user agreement, not legal advice or a substitute for provider-specific licenses. Before commercial distribution, have counsel review it for your operating jurisdictions and publish a privacy policy/contact route. Increment `terms_v1_accepted` to a new versioned preference key when you change the terms and need users to accept again.
-
-## Build
-Open this folder in Android Studio with JDK 17, Android SDK 35 and Gradle support. Build the Android app first. The native Rust provider code is not compiled by the existing Gradle workflow yet. To add it, implement a stable JNI API and build per ABI (for example `arm64-v8a` and `x86_64`) using Rust Android targets and cargo-ndk, then load the libraries from Kotlin and test on actual devices. Do not enable a provider until its integration, content rights, and download behavior have been validated.
-
-## Branding
-The launcher label is Decan Movie. The internal Android namespace/application ID has been left unchanged to avoid accidentally breaking existing installs or app links.
+## Important boundaries
+- Internet Archive playback/download only accepts files whose metadata indicates an open license or public-domain status and that are direct MP4 URLs.
+- TMDB, Kitsu, and metadata add-on results are discovery metadata, not video files. A title is playable only when a separately verified media URL is found.
+- MovieBox-TUI Rust sources are included as reference, but this Android app does not yet compile them into a JNI/NDK library or invoke their scrapers. Some provider implementations include provider-specific request signing, anti-bot behavior, or mirror resolution; they require an explicit Android port and separate review before integration.
+- No Android SDK/Gradle installation is available in the editing environment, so an APK build and physical-device test could not be run here. The GitHub Actions workflow is configured to perform the build after the ZIP is pushed to GitHub.

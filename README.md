@@ -192,3 +192,10 @@ TMDB metadata and images are provided by TMDB and are subject to TMDB's current 
 ## Current app scope
 
 The app targets Android 8.0+ phones and tablets, uses English TMDB metadata when configured, and keeps favorites and playback position on-device. If TMDB fails, search can fall back to Internet Archive records that pass the app’s open-license and MP4 checks. The Catalogs tab is metadata-only; those add-on results cannot be played or downloaded. Authorized Internet Archive playback uses Media3 with standard controls, supported audio/subtitle track selection, playback speed, fullscreen orientation, and retry after playback errors. Downloads use Android Download Manager and are saved under Downloads/DecanMovieBox. Compatible MP4 choices are ordered by detected resolution where available. TMDB/Kitsu/add-on results may show metadata without playback, and this version does not implement TV season/episode playback.
+
+
+## Playback flow update
+
+Selecting a title opens its details dialog immediately. The app then searches the rights-filtered Internet Archive catalog for a close, verified open-license/public-domain match. Matching video files are playable with the Android Media3 player and can be downloaded using Android DownloadManager. TMDB ratings are shown when supplied by the API. Commercial titles that are metadata-only remain clearly marked as unavailable rather than opening a blank player.
+
+MovieBox-TUI's Rust provider source is included for reference, but it is not currently compiled as a JNI library or automatically used by the Android app. Third-party provider playback requires a separately implemented and tested Android adapter and source-specific authorization.

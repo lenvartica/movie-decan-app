@@ -148,6 +148,7 @@ class LocalLibrary(private val context: Context) {
         put("tmdbId", movie.tmdbId)
         put("mediaType", movie.mediaType)
         put("sourceName", movie.sourceName)
+        put("voteAverage", movie.voteAverage)
         put("streamFormat", movie.streamFormat)
         put("videoOptions", JSONArray().apply {
             movie.videoOptions.forEach { source ->
@@ -171,6 +172,7 @@ class LocalLibrary(private val context: Context) {
             tmdbId = json.optInt("tmdbId"),
             mediaType = json.optString("mediaType", "movie"),
             sourceName = json.optString("sourceName", "Decan Engine"),
+            voteAverage = json.optDouble("voteAverage", 0.0),
             streamFormat = json.optString("streamFormat", "progressive"),
             videoOptions = json.optJSONArray("videoOptions")?.let { options ->
                 (0 until options.length()).mapNotNull { index ->

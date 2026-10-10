@@ -210,9 +210,20 @@ private fun DecanMovieBoxAppContent() {
     }
 
     fun loadMovieStreams(movie: Movie) {
-        // Metadata results are not presumed to have a legal stream. Only verified archive records carry videoUrl.
+        // Open the details window immediately, then look for a verified playable source in the
+        // rights-filtered public-domain/open-license catalog. Never launch ExoPlayer with an empty URL.
         selectedMovie = movie
-        fetchingStreams = false
+        fetchingStreams = movie.videoUrl.isBlank()
+        if (movie.videoUrl.isNotBlank()) return
+        scope.launch {
+            val match = withContext(Dispatchers.IO) {
+                runCatching { repository.findLicensedPlayableMatch(movie) }.getOrNull()
+            }
+            if (selectedMovie?.id == movie.id) {
+                selectedMovie = if (match?.videoUrl?.isNotBlank() == true) match else movie
+                fetchingStreams = false
+            }
+        }
     }
 
     LaunchedEffect(Unit) { loadHomeCategories() }
@@ -319,8 +330,12 @@ private fun DecanMovieBoxAppContent() {
             isFetchingStreams = fetchingStreams,
             onDismiss = { selectedMovie = null },
             onPlay = {
-                playerMovie = movie
-                selectedMovie = null
+                if (movie.videoUrl.isNotBlank()) {
+                    playerMovie = movie
+                    selectedMovie = null
+                } else {
+                    Toast.makeText(context, "No verified playable source was found for this title. Try the Licensed Films You Can Play row or search for a public-domain title.", Toast.LENGTH_LONG).show()
+                }
             },
             onFavorite = {
                 library.toggleFavorite(movie)
@@ -639,7 +654,7 @@ private fun MovieCard(movie: Movie, onClick: () -> Unit) {
         Column(Modifier.padding(9.dp)) {
             Text(movie.title, maxLines = 2, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
             Text(
-                listOf(movie.year, when (movie.mediaType) { "tv" -> "Series"; "anime" -> "Anime"; else -> "Movie" }).filter(String::isNotBlank).joinToString(" · "),
+                listOf(movie.year, when (movie.mediaType) { "tv" -> "Series"; "anime" -> "Anime"; else -> "Movie" }, if (movie.voteAverage > 0) "★ ${String.format(java.util.Locale.US, "%.1f", movie.voteAverage)}/10" else "").filter(String::isNotBlank).joinToString(" · "),
                 color = Color(0xFFF2B84B), style = MaterialTheme.typography.labelSmall,
             )
             if (movie.videoUrl.isBlank()) Text("Info only", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
@@ -700,7 +715,7 @@ private fun MovieDetailsDialog(
                 movie.posterUrl?.let { poster ->
                     AsyncImage(model = poster, contentDescription = "Poster for ${movie.title}", modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
                 }
-                Text(listOf(movie.year, if (movie.mediaType == "tv") "TV Series" else if (movie.mediaType == "anime") "Anime" else "Movie", movie.sourceName).filter(String::isNotBlank).joinToString(" · "), color = Color(0xFFF2B84B), modifier = Modifier.padding(top = 10.dp))
+                Text(listOf(movie.year, if (movie.mediaType == "tv") "TV Series" else if (movie.mediaType == "anime") "Anime" else "Movie", if (movie.voteAverage > 0) "★ ${String.format(java.util.Locale.US, "%.1f", movie.voteAverage)}/10" else "", movie.sourceName).filter(String::isNotBlank).joinToString(" · "), color = Color(0xFFF2B84B), modifier = Modifier.padding(top = 10.dp))
                 if (movie.overview.isNotBlank()) Text(movie.overview, modifier = Modifier.padding(top = 8.dp))
                 if (movie.licenseUrl.isNotBlank()) Text("Rights / license: ${movie.licenseUrl}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                 if (movie.mediaType == "tv") {
@@ -733,7 +748,7 @@ private fun MovieDetailsDialog(
                     }
                 }
                 if (movie.videoUrl.isBlank()) {
-                    Text("This result provides metadata only. No verified playback or download source is available in this app for this title.", color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
+                    Text(if (isFetchingStreams) "Searching the verified open-license catalog for a playable copy…" else "No verified playable source was found for this title. Try the ‘Licensed Films You Can Play’ catalog. Metadata alone is not a video file.", color = Color(0xFFFFD6A5), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
                 } else {
                     Text("Open-license metadata and MP4 found · ${movie.videoOptions.size.coerceAtLeast(1)} file option(s)", color = Color(0xFF9FE3B1), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
                 }
@@ -746,7 +761,7 @@ private fun MovieDetailsDialog(
                     TextButton(onClick = onDownload, enabled = movie.videoUrl.isNotBlank() && isAllowedMediaUrl(movie.videoUrl)) { Text("Download") }
                 }
                 Button(onClick = onPlay, enabled = movie.videoUrl.isNotBlank() && !isFetchingStreams, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (isFetchingStreams) "Checking…" else "▶ Play")
+                    Text(if (isFetchingStreams) "Finding playable source…" else "▶ Play")
                 }
             }
         },
