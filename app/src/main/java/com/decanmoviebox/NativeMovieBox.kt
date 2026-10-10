@@ -53,6 +53,8 @@ class NativeProviderRepository {
     }
 
     fun streams(movie: Movie, season: Int = 0, episode: Int = 0): Movie? {
+        // A null result means the bridge is unavailable or providers did not resolve a usable stream.
+        // The UI deliberately keeps this as a non-playable result rather than inventing a URL.
         if (!NativeMovieBox.available) return null
         val knownProvider = providerId(movie.sourceName)
         if (knownProvider != null) {

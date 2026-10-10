@@ -25,3 +25,7 @@ gradle --no-daemon -PbuildRustProviders=true assembleDebug
 ```
 
 The CI workflow performs those steps and publishes `app-debug.apk` as the `decan-movie-debug` artifact on success.
+
+
+## Latest follow-up
+TV episode rows now initiate provider resolution for the selected season/episode, then refresh the source list before playback. This is source-level implementation only; native compilation and device playback still require the GitHub Actions build and a real-device test.

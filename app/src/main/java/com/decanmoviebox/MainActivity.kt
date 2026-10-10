@@ -331,6 +331,22 @@ private fun DecanMovieBoxAppContent() {
             isFavorite = library.isFavorite(movie),
             isFetchingStreams = fetchingStreams,
             onDismiss = { selectedMovie = null },
+            onEpisodeSelected = { seasonNumber, episodeNumber ->
+                fetchingStreams = true
+                scope.launch {
+                    val episodeMovie = withContext(Dispatchers.IO) {
+                        runCatching { repository.getStreamsForMedia(movie, seasonNumber, episodeNumber) }.getOrNull()
+                    }
+                    if (selectedMovie?.id == movie.id) {
+                        selectedMovie = episodeMovie?.takeIf { it.videoOptions.isNotEmpty() || it.videoUrl.isNotBlank() }
+                            ?: movie.copy(videoUrl = "", videoOptions = emptyList(), sourceName = "No episode stream found")
+                        fetchingStreams = false
+                        if (episodeMovie == null || (episodeMovie.videoOptions.isEmpty() && episodeMovie.videoUrl.isBlank())) {
+                            Toast.makeText(context, "No playable source was found for S${seasonNumber}E${episodeNumber}. Try another provider or episode.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            },
             onPlay = { chosenSource ->
                 val selectedForPlayback = chosenSource ?: movie.videoOptions.firstOrNull()
                 val playbackMovie = if (selectedForPlayback != null) movie.copy(
@@ -677,6 +693,7 @@ private fun MovieDetailsDialog(
     isFavorite: Boolean,
     isFetchingStreams: Boolean,
     onDismiss: () -> Unit,
+    onEpisodeSelected: (seasonNumber: Int, episodeNumber: Int) -> Unit,
     onPlay: (VideoSource?) -> Unit,
     onFavorite: () -> Unit,
     onDownload: () -> Unit,
@@ -748,8 +765,13 @@ private fun MovieDetailsDialog(
                         }
                         if (episodes.isEmpty()) Text("No episode details were returned for this season.", style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
                         else episodes.forEach { episode ->
-                            Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                                Text("${episode.episodeNumber}. ${episode.name}", fontWeight = FontWeight.Medium)
+                            Column(
+                                Modifier.fillMaxWidth().clickable {
+                                    val seasonNumber = selectedSeason ?: return@clickable
+                                    onEpisodeSelected(seasonNumber, episode.episodeNumber)
+                                }.padding(vertical = 8.dp)
+                            ) {
+                                Text("▶ ${episode.episodeNumber}. ${episode.name}", fontWeight = FontWeight.Medium)
                                 if (episode.airDate.isNotBlank()) Text(episode.airDate, color = Color(0xFFF2B84B), style = MaterialTheme.typography.labelSmall)
                                 if (episode.overview.isNotBlank()) Text(episode.overview, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 3)
                             }

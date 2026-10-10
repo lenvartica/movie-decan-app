@@ -17,3 +17,17 @@
 10. Test favorites, playback progress, search, catalogs, Wi-Fi/mobile-data download settings, and interrupted network requests.
 
 **Not yet implemented in this update:** downloading native-provider streams, TV season/episode stream selection, subtitle forwarding for native-provider streams, and BDIX provider enablement. This checklist is for verification; no Android build/device test has been performed in the editing environment.
+
+## Episode playback (added in this pass)
+- [ ] Open a TV series, choose a season, and tap an episode row.
+- [ ] Confirm the UI enters the provider-search state and displays returned source/quality options.
+- [ ] Select a source and press Play; confirm the selected episode starts.
+- [ ] Try an unavailable episode and confirm a clear no-source message appears.
+
+## Build and runtime acceptance
+- [ ] Run the GitHub Actions workflow `Android APK` with `buildRustProviders=true`.
+- [ ] Confirm `app-debug.apk` contains `libdecanmovie_bridge.so` for arm64-v8a and x86_64.
+- [ ] Install on a physical Android device and test one authorized provider title end-to-end.
+- [ ] Check playback errors, switching sources, subtitles, and downloads separately.
+
+A successful ZIP integrity check is not a substitute for these build and device tests.
